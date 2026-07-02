@@ -1,0 +1,234 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import type { MemberRow, PointEntry, PointItem } from '@/lib/types';
+import { relativeDay } from '@/lib/format';
+import { NOW } from '@/lib/engagement';
+import { entriesFor, weekChange, rewardPunishmentSplit, memberPointTotal, POINT_FLOOR } from '@/lib/points';
+import { currentMember } from '@/lib/session';
+import { useApp } from './Providers';
+import { Avatar, Badge } from './ui';
+import { icons } from './icons';
+import { Modal, Field, Select } from './form';
+
+const ptColor = (n: number) => (n > 0 ? 'var(--success-600)' : n < 0 ? 'var(--pkp-primary)' : 'var(--ink-500)');
+const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+type Props = { members: MemberRow[]; entries: PointEntry[]; items: PointItem[] };
+
+export function PointsScreen(props: Props) {
+  const { role, persona } = useApp();
+  const [entries, setEntries] = useState<PointEntry[]>(props.entries);
+  const onLog = (e: PointEntry) => setEntries((x) => [e, ...x]);
+
+  if (role === 'member') {
+    const me = currentMember(props.members, persona);
+    return me
+      ? <MemberPoints me={me} members={props.members} entries={entries} items={props.items} />
+      : <p style={{ color: 'var(--ink-500)' }}>No record on file.</p>;
+  }
+  return <ExecPoints members={props.members} entries={entries} items={props.items} onLog={onLog} />;
+}
+
+/* ─────────────────────────── Shared: catalog drawer ─────────────────────────── */
+
+function PointValuesDrawer({ items, onClose }: { items: PointItem[]; onClose: () => void }) {
+  const rewards = items.filter((i) => i.kind === 'reward' && !i.discretionary).sort((a, b) => b.points - a.points);
+  const discretionary = items.filter((i) => i.discretionary);
+  const punishments = items.filter((i) => i.kind === 'punishment').sort((a, b) => b.points - a.points);
+  const row = (i: PointItem) => (
+    <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: '1px solid var(--cream-200)' }}>
+      <span style={{ fontSize: 13, color: 'var(--ink-700)' }}>{i.label}</span>
+      <span className="pkp-mono" style={{ fontSize: 13, fontWeight: 600, flexShrink: 0, color: i.discretionary ? 'var(--ink-400)' : ptColor(i.points) }}>
+        {i.discretionary ? '—' : signed(i.points)}
+      </span>
+    </div>
+  );
+  const section = (title: string, list: PointItem[]) => (
+    <div className="pkp-card" style={{ padding: 16 }}>
+      <div className="pkp-col-head" style={{ marginBottom: 4 }}>{title}</div>
+      {list.map(row)}
+    </div>
+  );
+  return (
+    <>
+      <div className="pkp-scrim" onClick={onClose} />
+      <div className="pkp-drawer">
+        <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 16, background: 'var(--white)' }}>
+          <div style={{ flex: 1 }}>
+            <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, color: 'var(--ink-900)' }}>Point values</h2>
+            <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 3 }}>Accountability catalog · floor of {POINT_FLOOR}</div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {section('Rewards', rewards)}
+          {section('Discretionary (GP/VP sets value)', discretionary)}
+          {section('Punishments', punishments)}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ─────────────────────────── Exec: leaderboard + log ─────────────────────────── */
+
+function ExecPoints({ members, entries, items, onLog }: Props & { onLog: (e: PointEntry) => void }) {
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [logging, setLogging] = useState(false);
+
+  const totalOf = (id: string) => memberPointTotal(entries, id);
+  const ranked = useMemo(() => [...members].sort((a, b) => totalOf(b.membershipId) - totalOf(a.membershipId)), [members, entries]);
+  const topPoints = Math.max(1, ...members.map((m) => Math.max(0, totalOf(m.membershipId))));
+  const change = (id: string) => weekChange(entries, id, NOW);
+  const motm = useMemo(
+    () => [...members].sort((a, b) => change(b.membershipId) - change(a.membershipId))[0],
+    [members, entries],
+  );
+
+  return (
+    <>
+      <div className="pkp-card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+          <h3 className="pkp-h3">Points leaderboard</h3>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button className="pkp-btn-ghost" style={{ height: 36, padding: '0 14px', fontSize: 12.5 }} onClick={() => setCatalogOpen(true)}>Point values</button>
+            <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', fontSize: 12.5 }} onClick={() => setLogging(true)}>
+              <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Log points
+            </button>
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {ranked.map((m, i) => {
+            const wk = change(m.membershipId);
+            const total = totalOf(m.membershipId);
+            const isMotm = motm && m.membershipId === motm.membershipId;
+            return (
+              <div key={m.membershipId} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
+                <div className="pkp-mono" style={{ width: 26, flexShrink: 0, textAlign: 'center', fontSize: 14, fontWeight: 700, color: i < 3 ? 'var(--pkp-primary)' : 'var(--ink-400)' }}>{i + 1}</div>
+                <Avatar name={m.fullName} size={32} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</span>
+                    {isMotm && <Badge tone="warning">🏆 Month</Badge>}
+                  </div>
+                  <div style={{ height: 6, borderRadius: 999, background: 'var(--cream-300)', overflow: 'hidden', marginTop: 6 }}>
+                    <div style={{ width: `${(Math.max(0, total) / topPoints) * 100}%`, height: '100%', borderRadius: 999, background: 'var(--pkp-accent)' }} />
+                  </div>
+                </div>
+                {wk !== 0 && <span className="pkp-mono" style={{ width: 40, textAlign: 'right', flexShrink: 0, fontSize: 12, color: ptColor(wk) }}>{signed(wk)}</span>}
+                <div className="pkp-mono pkp-r" style={{ width: 44, flexShrink: 0, fontSize: 14, fontWeight: 600, color: ptColor(total) }}>{total}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {catalogOpen && <PointValuesDrawer items={items} onClose={() => setCatalogOpen(false)} />}
+      {logging && <LogPointsModal members={members} items={items} onClose={() => setLogging(false)} onLog={(e) => { onLog(e); setLogging(false); }} />}
+    </>
+  );
+}
+
+function LogPointsModal({ members, items, onClose, onLog }: {
+  members: MemberRow[]; items: PointItem[]; onClose: () => void; onLog: (e: PointEntry) => void;
+}) {
+  const [memberId, setMemberId] = useState(members[0]?.membershipId ?? '');
+  const [itemId, setItemId] = useState(items[0]?.id ?? '');
+  const [approvedBy, setApprovedBy] = useState('');
+  const [customPts, setCustomPts] = useState('');
+
+  const item = items.find((it) => it.id === itemId);
+  const points = item?.discretionary ? Number(customPts) || 0 : item?.points ?? 0;
+  const canSave = !!memberId && !!item && approvedBy.trim() !== '' && (!item.discretionary || customPts !== '');
+
+  const submit = () => {
+    if (!canSave || !item) return;
+    onLog({
+      id: `pe-local-${Date.now()}`, membershipId: memberId, itemId: item.id, label: item.label,
+      points, date: NOW.toISOString(), approvedBy: approvedBy.trim(),
+    });
+  };
+
+  const opts = items.map((it) => ({
+    value: it.id,
+    label: `${it.label}${it.discretionary ? ' (set value)' : `  (${it.points > 0 ? '+' : ''}${it.points})`}`,
+  }));
+
+  return (
+    <Modal title="Log points" sub="Award or deduct against the catalog" onClose={onClose} width={500}
+      footer={<>
+        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
+        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave} onClick={submit}>
+          Log {signed(points)}
+        </button>
+      </>}>
+      <Select label="Brother" value={memberId} onChange={(e) => setMemberId(e.target.value)}
+        options={members.map((m) => ({ value: m.membershipId, label: m.fullName }))} />
+      <Select label="Item" value={itemId} onChange={(e) => setItemId(e.target.value)} options={opts} />
+      {item?.discretionary && (
+        <Field label="Points (discretionary)" type="number" value={customPts} onChange={(e) => setCustomPts(e.target.value)} placeholder="e.g. 5" />
+      )}
+      <Field label="Approved by" value={approvedBy} onChange={(e) => setApprovedBy(e.target.value)} placeholder="Officer name" />
+    </Modal>
+  );
+}
+
+/* ─────────────────────────── Member: your points + ledger ─────────────────────────── */
+
+function MemberPoints({ me, members, entries, items }: { me: MemberRow; members: MemberRow[]; entries: PointEntry[]; items: PointItem[] }) {
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const myTotal = memberPointTotal(entries, me.membershipId);
+  const rank = [...members].sort((a, b) => memberPointTotal(entries, b.membershipId) - memberPointTotal(entries, a.membershipId)).findIndex((m) => m.membershipId === me.membershipId) + 1;
+  const mine = useMemo(
+    () => entriesFor(entries, me.membershipId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [entries, me.membershipId],
+  );
+  const split = rewardPunishmentSplit(entries, me.membershipId);
+  const wk = weekChange(entries, me.membershipId, NOW);
+
+  return (
+    <div style={{ maxWidth: 660, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="pkp-card" style={{ padding: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-500)' }}>Your points</div>
+            <div className="pkp-mono" style={{ fontSize: 40, fontWeight: 600, letterSpacing: '-.02em', lineHeight: 1.05, marginTop: 4, color: ptColor(myTotal) }}>{myTotal}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 4 }}>
+              #{rank} in chapter · {wk !== 0 ? `${signed(wk)} this week` : 'no change this week'}
+            </div>
+          </div>
+          <button className="pkp-btn-ghost" style={{ height: 34, padding: '0 13px', fontSize: 12.5, flexShrink: 0 }} onClick={() => setCatalogOpen(true)}>Point values</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div className="pkp-card" style={{ padding: 13 }}>
+            <div className="pkp-mono" style={{ fontSize: 18, fontWeight: 600, color: 'var(--success-600)' }}>{signed(split.reward)}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 4 }}>Earned</div>
+          </div>
+          <div className="pkp-card" style={{ padding: 13 }}>
+            <div className="pkp-mono" style={{ fontSize: 18, fontWeight: 600, color: split.punishment < 0 ? 'var(--pkp-primary)' : 'var(--ink-500)' }}>{signed(split.punishment)}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 4 }}>Deductions</div>
+          </div>
+        </div>
+        <div className="pkp-col-head" style={{ marginBottom: 4 }}>Ledger</div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {mine.map((e) => (
+            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 11, padding: '10px 0', borderTop: '1px solid var(--cream-200)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: ptColor(e.points) }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: 'var(--ink-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.label}</div>
+                  <div className="pkp-mono" style={{ fontSize: 11, color: 'var(--ink-400)', marginTop: 2 }}>{relativeDay(e.date, NOW)} · {e.approvedBy}</div>
+                </div>
+              </div>
+              <span className="pkp-mono" style={{ fontSize: 13.5, fontWeight: 600, flexShrink: 0, color: ptColor(e.points) }}>{signed(e.points)}</span>
+            </div>
+          ))}
+          {mine.length === 0 && <div style={{ fontSize: 13, color: 'var(--ink-500)', padding: '10px 0' }}>No point entries yet.</div>}
+        </div>
+      </div>
+
+      {catalogOpen && <PointValuesDrawer items={items} onClose={() => setCatalogOpen(false)} />}
+    </div>
+  );
+}

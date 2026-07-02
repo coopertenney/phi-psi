@@ -1,0 +1,52 @@
+/* ============================================================================
+   Phi Kappa Psi — design tokens (portable)
+   Extracted verbatim from the prototype. Drop this into any framework
+   (global stylesheet, or feed the values into a Tailwind config) so the
+   rebuilt app stays pixel-identical to the approved design.
+   Themes are switched with  <html data-theme="cardinal|hunter|heritage">.
+   ============================================================================ */
+:root {
+  --cream-50:#FAF9F5; --cream-100:#F5F3EC; --cream-200:#F0EDE3; --cream-300:#E8E4D7; --cream-400:#DED9C7;
+  --ink-900:#141413; --ink-800:#1F1E1C; --ink-700:#34322E; --ink-600:#54514A; --ink-500:#76726A; --ink-400:#9C978C; --ink-300:#C2BDB0;
+  --white:#FFFFFF;
+  --cardinal-700:#6B1020; --cardinal-600:#841528; --cardinal-500:#9E1B32; --cardinal-400:#B6394F; --cardinal-200:#E7C4CC; --cardinal-100:#F4E2E6;
+  --hunter-700:#123528; --hunter-600:#1B4332; --hunter-500:#2A5E47; --hunter-400:#3C7558; --hunter-200:#C6DAD0; --hunter-100:#E0EBE5;
+  --success-600:#3F7355; --success-500:#4C8A66; --success-100:#DFEDE4;
+  --warning-600:#9A6B22; --warning-500:#C99A3F; --warning-100:#F6EBD3;
+  --danger-600:#A53F31; --danger-500:#BD4F3F; --danger-100:#F4DED9;
+  --info-600:#3C5F8A; --info-500:#4A6FA5; --info-100:#DDE6F2;
+  --font-serif:"Newsreader",Georgia,serif; --font-sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif; --font-mono:"Spline Sans Mono",ui-monospace,Menlo,monospace;
+  --radius-sm:8px; --radius-md:10px; --radius-lg:14px; --radius-pill:999px;
+  --shadow-xs:0 1px 1px rgba(20,20,19,.04);
+  --shadow-sm:0 1px 2px rgba(20,20,19,.06),0 1px 1px rgba(20,20,19,.04);
+  --shadow-md:0 2px 6px rgba(20,20,19,.07),0 1px 2px rgba(20,20,19,.05);
+  --shadow-lg:0 8px 24px rgba(20,20,19,.09),0 2px 6px rgba(20,20,19,.05);
+  --shadow-xl:0 18px 48px rgba(20,20,19,.12),0 6px 14px rgba(20,20,19,.06);
+}
+:root, [data-theme="cardinal"] {
+  --pkp-primary:var(--cardinal-500); --pkp-primary-hover:var(--cardinal-600); --pkp-primary-strong:var(--cardinal-700);
+  --pkp-primary-tint:var(--cardinal-100); --pkp-primary-border:var(--cardinal-200);
+  --pkp-accent:var(--hunter-600); --pkp-accent-tint:var(--hunter-100);
+  --pkp-side-bg:var(--white); --pkp-side-fg:var(--ink-900); --pkp-side-muted:var(--ink-500);
+  --pkp-side-active-bg:var(--cardinal-100); --pkp-side-active-fg:var(--cardinal-700);
+  --pkp-side-border:var(--cream-400); --pkp-side-hover:var(--cream-100);
+  --pkp-crest-bg:var(--cardinal-500); --pkp-crest-fg:#fff; --pkp-side-card:var(--cream-100);
+}
+[data-theme="hunter"] {
+  --pkp-primary:var(--hunter-600); --pkp-primary-hover:var(--hunter-700); --pkp-primary-strong:var(--hunter-700);
+  --pkp-primary-tint:var(--hunter-100); --pkp-primary-border:var(--hunter-200);
+  --pkp-accent:var(--cardinal-500); --pkp-accent-tint:var(--cardinal-100);
+  --pkp-side-bg:var(--white); --pkp-side-fg:var(--ink-900); --pkp-side-muted:var(--ink-500);
+  --pkp-side-active-bg:var(--hunter-100); --pkp-side-active-fg:var(--hunter-700);
+  --pkp-side-border:var(--cream-400); --pkp-side-hover:var(--cream-100);
+  --pkp-crest-bg:var(--hunter-600); --pkp-crest-fg:#fff; --pkp-side-card:var(--cream-100);
+}
+[data-theme="heritage"] {
+  --pkp-primary:var(--cardinal-500); --pkp-primary-hover:var(--cardinal-600); --pkp-primary-strong:var(--cardinal-700);
+  --pkp-primary-tint:var(--cardinal-100); --pkp-primary-border:var(--cardinal-200);
+  --pkp-accent:var(--hunter-600); --pkp-accent-tint:var(--hunter-100);
+  --pkp-side-bg:var(--hunter-700); --pkp-side-fg:#F4F1E9; --pkp-side-muted:rgba(244,241,233,.62);
+  --pkp-side-active-bg:rgba(255,255,255,.12); --pkp-side-active-fg:#FFFFFF;
+  --pkp-side-border:rgba(255,255,255,.14); --pkp-side-hover:rgba(255,255,255,.07);
+  --pkp-crest-bg:var(--cardinal-500); --pkp-crest-fg:#fff; --pkp-side-card:rgba(255,255,255,.08);
+}

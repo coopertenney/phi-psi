@@ -1,0 +1,19 @@
+# Phi Psi — version only the app source, SQL, and docs.
+# The parent folder is full of chapter media (photos/PDFs/xlsx) and PII
+# (the roster CSV) we don't want in git, so ignore the root by default…
+/*
+
+# …then re-include just the project.
+!/chapter-app/
+!/app-foundation/
+!/phi-kappa-psi-dashboard.html
+!/.gitignore
+
+# Safety net: never commit secrets or build junk, anywhere in the tree.
+.env
+.env.local
+.DS_Store
+node_modules/
+.next/
+.vercel/
+*.tsbuildinfo

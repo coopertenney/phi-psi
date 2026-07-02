@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phi Kappa Psi · Cal Beta Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  :root {
+    --cream-50:#FAF9F5; --cream-100:#F5F3EC; --cream-200:#F0EDE3; --cream-300:#E8E4D7; --cream-400:#DED9C7;
+    --ink-900:#141413; --ink-800:#1F1E1C; --ink-700:#34322E; --ink-600:#54514A; --ink-500:#76726A; --ink-400:#9C978C; --ink-300:#C2BDB0;
+    --white:#FFFFFF;
+    --cardinal-700:#6B1020; --cardinal-600:#841528; --cardinal-500:#9E1B32; --cardinal-400:#B6394F; --cardinal-200:#E7C4CC; --cardinal-100:#F4E2E6;
+    --hunter-700:#123528; --hunter-600:#1B4332; --hunter-500:#2A5E47; --hunter-400:#3C7558; --hunter-200:#C6DAD0; --hunter-100:#E0EBE5;
+    --success-600:#3F7355; --success-500:#4C8A66; --success-100:#DFEDE4;
+    --warning-600:#9A6B22; --warning-500:#C99A3F; --warning-100:#F6EBD3;
+    --danger-600:#A53F31; --danger-500:#BD4F3F; --danger-100:#F4DED9;
+    --info-600:#3C5F8A; --info-500:#4A6FA5; --info-100:#DDE6F2;
+    --font-serif:"Newsreader",Georgia,serif; --font-sans:"Hanken Grotesk",ui-sans-serif,system-ui,sans-serif; --font-mono:"Spline Sans Mono",ui-monospace,Menlo,monospace;
+    --radius-sm:8px; --radius-md:10px; --radius-lg:14px; --radius-pill:999px;
+    --shadow-xs:0 1px 1px rgba(20,20,19,.04);
+    --shadow-sm:0 1px 2px rgba(20,20,19,.06),0 1px 1px rgba(20,20,19,.04);
+    --shadow-md:0 2px 6px rgba(20,20,19,.07),0 1px 2px rgba(20,20,19,.05);
+    --shadow-lg:0 8px 24px rgba(20,20,19,.09),0 2px 6px rgba(20,20,19,.05);
+    --shadow-xl:0 18px 48px rgba(20,20,19,.12),0 6px 14px rgba(20,20,19,.06);
+  }
+  :root, [data-theme="cardinal"] {
+    --pkp-primary:var(--cardinal-500); --pkp-primary-hover:var(--cardinal-600); --pkp-primary-strong:var(--cardinal-700);
+    --pkp-primary-tint:var(--cardinal-100); --pkp-primary-border:var(--cardinal-200);
+    --pkp-accent:var(--hunter-600); --pkp-accent-tint:var(--hunter-100);
+    --pkp-side-bg:var(--white); --pkp-side-fg:var(--ink-900); --pkp-side-muted:var(--ink-500);
+    --pkp-side-active-bg:var(--cardinal-100); --pkp-side-active-fg:var(--cardinal-700);
+    --pkp-side-border:var(--cream-400); --pkp-side-hover:var(--cream-100);
+    --pkp-crest-bg:var(--cardinal-500); --pkp-crest-fg:#fff; --pkp-side-card:var(--cream-100);
+  }
+  [data-theme="hunter"] {
+    --pkp-primary:var(--hunter-600); --pkp-primary-hover:var(--hunter-700); --pkp-primary-strong:var(--hunter-700);
+    --pkp-primary-tint:var(--hunter-100); --pkp-primary-border:var(--hunter-200);
+    --pkp-accent:var(--cardinal-500); --pkp-accent-tint:var(--cardinal-100);
+    --pkp-side-bg:var(--white); --pkp-side-fg:var(--ink-900); --pkp-side-muted:var(--ink-500);
+    --pkp-side-active-bg:var(--hunter-100); --pkp-side-active-fg:var(--hunter-700);
+    --pkp-side-border:var(--cream-400); --pkp-side-hover:var(--cream-100);
+    --pkp-crest-bg:var(--hunter-600); --pkp-crest-fg:#fff; --pkp-side-card:var(--cream-100);
+  }
+  [data-theme="heritage"] {
+    --pkp-primary:var(--cardinal-500); --pkp-primary-hover:var(--cardinal-600); --pkp-primary-strong:var(--cardinal-700);
+    --pkp-primary-tint:var(--cardinal-100); --pkp-primary-border:var(--cardinal-200);
+    --pkp-accent:var(--hunter-600); --pkp-accent-tint:var(--hunter-100);
+    --pkp-side-bg:var(--hunter-700); --pkp-side-fg:#F4F1E9; --pkp-side-muted:rgba(244,241,233,.62);
+    --pkp-side-active-bg:rgba(255,255,255,.12); --pkp-side-active-fg:#FFFFFF;
+    --pkp-side-border:rgba(255,255,255,.14); --pkp-side-hover:rgba(255,255,255,.07);
+    --pkp-crest-bg:var(--cardinal-500); --pkp-crest-fg:#fff; --pkp-side-card:rgba(255,255,255,.08);
+  }
+  @keyframes pkpScrim { from { opacity:0; } to { opacity:1; } }
+  @keyframes pkpSlide { from { transform:translateX(100%); } to { transform:translateX(0); } }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:var(--cream-400); border-radius:999px; border:3px solid var(--cream-50); }
+  /* style-hover replacements from the design */
+  .pkp-nav-btn:hover { background:var(--pkp-side-hover) !important; }
+  .pkp-row:hover { background:var(--cream-100); }
+  .pkp-link:hover { text-decoration:underline; }
+  button { font: inherit; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Phi Kappa Psi — Cal Beta chapter dashboard
+   Ported from the Claude Design prototype (DCLogic) to a
+   self-contained vanilla-JS app. State + computed values mirror
+   the original renderVals(); inline styles are copied verbatim.
+   ============================================================ */
+
+// ---------- data ----------
+const MEMBERS = [
+  { name:"Marcus Chen", role:"President", classYear:"2026", committee:"Executive", status:"active", dues:"paid", points:480, attendance:100, email:"mchen@stanford.edu" },
+  { name:"Aisha Patel", role:"Treasurer", classYear:"2027", committee:"Finance", status:"active", dues:"paid", points:462, attendance:96, email:"apatel@stanford.edu" },
+  { name:"Diego Ramirez", role:"Vice President", classYear:"2026", committee:"Executive", status:"active", dues:"paid", points:445, attendance:94, email:"dramirez@stanford.edu" },
+  { name:"Jordan Avery", role:"Recruitment Chair", classYear:"2027", committee:"Recruitment", status:"active", dues:"partial", points:410, attendance:88, email:"javery@stanford.edu" },
+  { name:"Tyler Brooks", role:"Social Chair", classYear:"2027", committee:"Social", status:"active", dues:"paid", points:388, attendance:90, email:"tbrooks@stanford.edu" },
+  { name:"Noah Williams", role:"Philanthropy Chair", classYear:"2028", committee:"Service", status:"active", dues:"paid", points:372, attendance:88, email:"nwilliams@stanford.edu" },
+  { name:"Ethan Park", role:"Secretary", classYear:"2028", committee:"Executive", status:"active", dues:"partial", points:355, attendance:84, email:"epark@stanford.edu" },
+  { name:"Liam Foster", role:"Risk Manager", classYear:"2026", committee:"Standards", status:"active", dues:"paid", points:340, attendance:82, email:"lfoster@stanford.edu" },
+  { name:"Caleb Nguyen", role:"Brother", classYear:"2028", committee:"Social", status:"active", dues:"due", points:295, attendance:76, email:"cnguyen@stanford.edu" },
+  { name:"Owen Mitchell", role:"New Member", classYear:"2029", committee:"New Member Class", status:"new", dues:"partial", points:180, attendance:94, email:"omitchell@stanford.edu" },
+  { name:"Sam Rivera", role:"New Member", classYear:"2029", committee:"New Member Class", status:"new", dues:"due", points:150, attendance:88, email:"srivera@stanford.edu" },
+  { name:"Henry Cole", role:"Brother", classYear:"2027", committee:"Unassigned", status:"inactive", dues:"due", points:90, attendance:38, email:"hcole@stanford.edu" },
+];
+
+const EVENTS = [
+  { name:"Weekly Chapter Meeting", dateMonth:"APR", dateDay:"12", weekday:"Sun", time:"7:00 PM", location:"Chapter House", type:"chapter", required:true, rsvp:38, capacity:52, points:10 },
+  { name:"Spring Philanthropy 5K", dateMonth:"APR", dateDay:"15", weekday:"Wed", time:"9:00 AM", location:"Lake Lagunita", type:"philanthropy", required:false, rsvp:41, capacity:52, points:25 },
+  { name:"Founders Day Formal", dateMonth:"APR", dateDay:"19", weekday:"Sun", time:"8:00 PM", location:"Rosewood Hotel", type:"social", required:false, rsvp:47, capacity:52, points:15 },
+  { name:"Recruitment Info Night", dateMonth:"APR", dateDay:"22", weekday:"Wed", time:"6:30 PM", location:"Tresidder Union", type:"recruitment", required:true, rsvp:22, capacity:52, points:10 },
+  { name:"Alumni Spring BBQ", dateMonth:"APR", dateDay:"26", weekday:"Sun", time:"12:00 PM", location:"Wilbur Field", type:"social", required:false, rsvp:30, capacity:52, points:10 },
+];
+
+const ANNOUNCEMENTS = [
+  { author:"Aisha Patel", role:"Treasurer", time:"2h ago", title:"Spring dues are due April 15", snippet:"Final reminder — balances must be cleared before the Founders Day Formal.", body:"Final reminder that spring term dues are due by April 15. Anyone on a payment plan should have their second installment in by then. Balances must be cleared before the Founders Day Formal — reach out if you need to discuss arrangements.", pinned:true, reactions:18, comments:5 },
+  { author:"Noah Williams", role:"Philanthropy Chair", time:"1d ago", title:"Volunteers needed for the Philanthropy 5K", snippet:"We still need 8 brothers for setup and water stations on the morning of the 15th.", body:"We still need 8 brothers to help with setup, registration, and water stations on the morning of the 15th. Volunteer slots earn 15 service points each. Sign up in the events tab — this is our biggest fundraiser of the term.", pinned:false, reactions:12, comments:3 },
+  { author:"Tyler Brooks", role:"Social Chair", time:"2d ago", title:"Founders Day Formal tickets are live", snippet:"Tickets and the guest list close Friday at midnight. Don't miss it.", body:"Tickets for the Founders Day Formal at the Rosewood are now available. Guest list and ticket sales close Friday at midnight — no exceptions this year due to venue headcount. Transportation details to follow.", pinned:false, reactions:24, comments:9 },
+  { author:"Marcus Chen", role:"President", time:"3d ago", title:"Chapter GPA reached an all-time high", snippet:"Cal Beta posted a 3.41 term GPA — the highest in chapter history.", body:"Proud to share that Cal Beta posted a 3.41 cumulative GPA this term, the highest in chapter history and second among all fraternities on campus. Thank you to our scholarship chair and everyone who showed up to study tables. Let's keep it going.", pinned:false, reactions:41, comments:14 },
+];
+
+const TINTS = [
+  { bg:"var(--cardinal-100)", fg:"var(--cardinal-700)" },
+  { bg:"var(--hunter-100)", fg:"var(--hunter-700)" },
+  { bg:"var(--info-100)", fg:"var(--info-600)" },
+  { bg:"#EEE6D6", fg:"#8A6D3B" },
+];
+
+const BADGES = {
+  success:{ background:"var(--success-100)", color:"var(--success-600)" },
+  warning:{ background:"var(--warning-100)", color:"var(--warning-600)" },
+  danger:{ background:"var(--danger-100)", color:"var(--danger-600)" },
+  info:{ background:"var(--info-100)", color:"var(--info-600)" },
+  neutral:{ background:"var(--cream-200)", color:"var(--ink-700)" },
+  accent:{ background:"var(--pkp-primary-tint)", color:"var(--pkp-primary-strong)" },
+  hunter:{ background:"var(--hunter-100)", color:"var(--hunter-700)" },
+};
+
+// ---------- helpers ----------
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const initials = n => n.split(" ").map(p=>p[0]).filter(Boolean).slice(0,2).join("").toUpperCase();
+const tint = n => TINTS[(n.charCodeAt(0)||0) % TINTS.length];
+const money = n => "$" + n.toLocaleString();
+
+function badgeStyle(tone){
+  const b = BADGES[tone] || BADGES.neutral;
+  return `display:inline-flex; align-items:center; gap:5px; white-space:nowrap; font-family:var(--font-sans); font-weight:600; font-size:12px; line-height:1; letter-spacing:.01em; padding:5px 10px; border-radius:999px; background:${b.background}; color:${b.color};`;
+}
+
+function statusInfo(s){
+  if(s==="active") return { tone:"success", label:"Active" };
+  if(s==="new") return { tone:"info", label:"New Member" };
+  return { tone:"neutral", label:"Inactive" };
+}
+function duesInfo(d){
+  if(d==="paid") return { tone:"success", label:"Paid" };
+  if(d==="partial") return { tone:"warning", label:"Partial" };
+  return { tone:"danger", label:"Due" };
+}
+function typeInfo(t){
+  if(t==="chapter") return { tone:"accent", label:"Chapter" };
+  if(t==="philanthropy") return { tone:"hunter", label:"Philanthropy" };
+  if(t==="social") return { tone:"info", label:"Social" };
+  if(t==="recruitment") return { tone:"warning", label:"Recruitment" };
+  return { tone:"neutral", label:t };
+}
+function dots(att){
+  const n = 8, on = Math.round(att/100*n);
+  const base = "display:inline-block; width:9px; height:9px; border-radius:50%;";
+  return Array.from({length:n}, (_,i)=>({ style: base + " background:" + (i<on ? "var(--hunter-500)" : "var(--cream-300)") + ";" }));
+}
+
+// SVG icons (mirrors the prototype's _icon)
+const SVG = (ch, s) => `<svg width="${s||18}" height="${s||18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ch}</svg>`;
+const R = o => `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="${o.rx||2}"></rect>`;
+const P = d => `<path d="${d}"></path>`;
+function icon(name){
+  switch(name){
+    case "dashboard": return SVG(R({x:3,y:3,w:7,h:8})+R({x:14,y:3,w:7,h:5})+R({x:14,y:12,w:7,h:9})+R({x:3,y:14,w:7,h:7}));
+    case "members": return SVG(P("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2")+'<circle cx="9" cy="7" r="4"></circle>'+P("M22 21v-2a4 4 0 0 0-3-3.87")+P("M16 3.13a4 4 0 0 1 0 7.75"));
+    case "finances": return SVG(P("M21 12V7H5a2 2 0 0 1 0-4h14v4")+P("M3 5v14a2 2 0 0 0 2 2h16v-5")+P("M18 12a2 2 0 0 0 0 4h4v-4Z"));
+    case "events": return SVG(R({x:3,y:4,w:18,h:18,rx:2})+P("M16 2v4")+P("M8 2v4")+P("M3 10h18"));
+    case "attendance": return SVG(P("m9 11 3 3L22 4")+P("M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"));
+    case "announcements": return SVG(P("m3 11 18-5v12L3 14v-3z")+P("M11.6 16.8a3 3 0 1 1-5.8-1.6"));
+    case "search": return SVG('<circle cx="11" cy="11" r="8"></circle>'+P("m21 21-4.3-4.3"), 16);
+    case "plus": return SVG(P("M5 12h14")+P("M12 5v14"), 16);
+    case "pin": return SVG(P("M12 17v5")+P("M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"), 13);
+    case "chevron": return SVG(P("m9 18 6-6-6-6"), 18);
+    default: return "";
+  }
+}
+
+function enrich(m, rank){
+  const t = tint(m.name), si = statusInfo(m.status), di = duesInfo(m.dues);
+  const paidNum = m.dues==="paid"?850:m.dues==="partial"?500:0;
+  const bal = 850 - paidNum;
+  return {
+    ...m,
+    initials:initials(m.name), avatarBg:t.bg, avatarFg:t.fg,
+    statusLabel:si.label, statusStyle:badgeStyle(si.tone),
+    duesLabel:di.label, duesStyle:badgeStyle(di.tone),
+    paidNum, balance:bal, balanceStr:money(bal),
+    dots:dots(m.attendance), rank,
+  };
+}
+
+// ---------- state ----------
+const state = { nav:"dashboard", role:"exec", selected:null, filter:"all", theme:"cardinal", density:"comfortable" };
+
+function setState(patch){ Object.assign(state, patch); render(); }
+
+// ---------- computed (mirrors renderVals) ----------
+function computeVals(){
+  const theme = state.theme || "cardinal";
+  const compact = (state.density || "comfortable") === "compact";
+  const { nav, role, filter } = state;
+  const isExec = role === "exec", isMember = role === "member";
+
+  const ranked = MEMBERS.slice().sort((a,b)=>b.points-a.points);
+  const rankOf = {}; ranked.forEach((m,i)=>{ rankOf[m.name]=i+1; });
+  const enriched = MEMBERS.map(m=>enrich(m, rankOf[m.name]));
+  const byName = {}; enriched.forEach(m=>{ byName[m.name]=m; });
+
+  const total = MEMBERS.length;
+  const activeMembers = MEMBERS.filter(m=>m.status!=="inactive").length;
+  const paidCount = MEMBERS.filter(m=>m.dues==="paid").length;
+  const partialCount = MEMBERS.filter(m=>m.dues==="partial").length;
+  const dueCount = MEMBERS.filter(m=>m.dues==="due").length;
+  const collected = enriched.reduce((s,m)=>s+m.paidNum,0);
+  const target = 850*total;
+  const outstanding = target - collected;
+  const duesPct = Math.round(collected/target*100);
+  const avgAttendance = Math.round(MEMBERS.filter(m=>m.status!=="inactive").reduce((s,m)=>s+m.attendance,0)/activeMembers);
+  const pointsTerm = MEMBERS.reduce((s,m)=>s+m.points,0);
+
+  const stats = {
+    activeMembers, totalMembers:total, paidCount, partialCount, dueCount,
+    duesCollected:money(collected), duesTarget:money(target), termDues:"$850",
+    outstanding:money(outstanding), owingCount:partialCount+dueCount,
+    duesPct, avgAttendance, meetingsHeld:8, pointsTerm,
+    paidWidth:Math.round(paidCount/total*100)+"%",
+    partialWidth:Math.round(partialCount/total*100)+"%",
+    dueWidth:Math.round(dueCount/total*100)+"%",
+  };
+
+  const navDefs = [
+    { id:"dashboard", label: isMember ? "My Dashboard" : "Dashboard" },
+    { id:"members", label:"Members" },
+    { id:"finances", label:"Finances" },
+    { id:"events", label:"Events" },
+    { id:"attendance", label:"Attendance" },
+    { id:"announcements", label:"Announcements" },
+  ];
+  const navBtnBase = "display:flex; align-items:center; gap:11px; width:100%; padding:10px 12px; border-radius:var(--radius-md); border:none; cursor:pointer; font-family:var(--font-sans); font-size:14.5px; text-align:left; transition:background .12s ease;";
+  const navItems = navDefs.map(it=>({
+    id:it.id, label:it.label, icon:icon(it.id),
+    style: it.id===nav
+      ? navBtnBase + " background:var(--pkp-side-active-bg); color:var(--pkp-side-active-fg); font-weight:600;"
+      : navBtnBase + " background:transparent; color:var(--pkp-side-muted); font-weight:500;",
+  }));
+
+  const segBase = "border:none; cursor:pointer; font-family:var(--font-sans); font-weight:600; font-size:13px; padding:6px 16px; border-radius:999px;";
+  const segOn = segBase + " background:var(--white); color:var(--pkp-primary-strong); box-shadow:var(--shadow-xs);";
+  const segOff = segBase + " background:transparent; color:var(--ink-500);";
+
+  const titleMap = {
+    dashboard: isMember ? "Welcome back, Jordan" : "Chapter Dashboard",
+    members:"Members", finances:"Finances", events:"Events",
+    attendance:"Attendance & Points", announcements:"Announcements",
+  };
+  const subMap = {
+    dashboard: isMember ? "Here's what's happening at Cal Beta this week" : "Cal Beta · Spring Term 2026",
+    members:"Roster, roles & standing", finances:"Dues, budget & payments",
+    events:"Chapter calendar & RSVPs", attendance:"Points and meeting attendance",
+    announcements:"Updates for the chapter",
+  };
+
+  const execUser = byName["Marcus Chen"];
+  const me = byName["Jordan Avery"];
+  const cu = isMember ? me : execUser;
+  const currentUser = { name:cu.name, role:cu.role, initials:cu.initials, avatarBg:cu.avatarBg, avatarFg:cu.avatarFg };
+
+  const enrichEvent = ev => {
+    const ti = typeInfo(ev.type);
+    return { ...ev, typeLabel:ti.label, typeStyle:badgeStyle(ti.tone), rsvpPct:Math.round(ev.rsvp/ev.capacity*100)+"%" };
+  };
+  const events = EVENTS.map(enrichEvent);
+  const dashEvents = events.slice(0,4);
+
+  const annTints = a => {
+    const t = tint(a.author);
+    return { ...a, initials:initials(a.author), avatarBg:t.bg, avatarFg:t.fg,
+      accentBorder: a.pinned ? "3px solid var(--pkp-primary)" : "1px solid var(--cream-400)" };
+  };
+  const announcements = ANNOUNCEMENTS.map(annTints);
+  const dashAnnouncements = ANNOUNCEMENTS.slice(0,3);
+
+  const rankStyle = rank => {
+    const medal = rank===1?"var(--cardinal-500)":rank===2?"var(--hunter-500)":rank===3?"#B8966A":"transparent";
+    const fg = rank<=3 ? "#fff" : "var(--ink-500)";
+    return `display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; font-family:var(--font-mono); font-size:12.5px; font-weight:600; background:${medal}; color:${fg};`;
+  };
+  const leaderboard = ranked.map(m=>{ const e=byName[m.name]; return { ...e, rankStyle:rankStyle(e.rank) }; });
+  const topLeaders = leaderboard.slice(0,5);
+
+  const isOfficer = m => !["Brother","New Member"].includes(m.role);
+  let filtered = enriched;
+  if(filter==="active") filtered = enriched.filter(m=>m.status==="active");
+  else if(filter==="new") filtered = enriched.filter(m=>m.status==="new");
+  else if(filter==="officers") filtered = enriched.filter(isOfficer);
+  const filteredMembers = filtered;
+
+  const chipDefs = [
+    { id:"all", label:"All members" }, { id:"active", label:"Active" },
+    { id:"new", label:"New members" }, { id:"officers", label:"Officers" },
+  ];
+  const chipBase = "border:1px solid var(--cream-400); cursor:pointer; font-family:var(--font-sans); font-weight:600; font-size:13px; padding:8px 16px; border-radius:999px; transition:all .12s ease;";
+  const filterChips = chipDefs.map(c=>({
+    id:c.id, label:c.label,
+    style: c.id===filter
+      ? chipBase + " background:var(--pkp-primary); color:#fff; border-color:var(--pkp-primary);"
+      : chipBase + " background:var(--white); color:var(--ink-600);",
+  }));
+
+  const financeRows = enriched.map(r=>{
+    const di = duesInfo(r.dues);
+    return { name:r.name, initials:r.initials, avatarBg:r.avatarBg, avatarFg:r.avatarFg,
+      termDues:"$850", paid:money(r.paidNum), balance:money(r.balance),
+      balanceColor: r.balance>0 ? "var(--danger-600)" : "var(--ink-400)",
+      statusLabel:di.label, statusStyle:badgeStyle(di.tone) };
+  });
+  const fin = { budgetTotal:"$14,500", budgetSpent:"$8,240", budgetRemaining:"$6,260", budgetWidth:"57%" };
+
+  const meVals = {
+    points:me.points, rank:me.rank, attendance:me.attendance, balanceStr:me.balanceStr,
+    duesLabel:me.duesLabel, duesStyle:me.duesStyle,
+    meetingsAttended:Math.round(me.attendance/100*8),
+    pointsWidth:Math.round(me.points/ranked[0].points*100)+"%",
+    dots:me.dots,
+  };
+
+  const sel = state.selected ? byName[state.selected] : null;
+  const activityFor = m => m ? [
+    { text:`Earned ${m.points>300?15:10} points at Chapter Meeting`, time:"2 days ago", color:"var(--hunter-500)" },
+    { text: m.dues==="paid"?"Paid spring term dues in full":"Dues reminder sent", time:"1 week ago", color: m.dues==="paid"?"var(--success-500)":"var(--warning-500)" },
+    { text:`RSVP'd to Founders Day Formal`, time:"1 week ago", color:"var(--info-500)" },
+  ] : [];
+  const selected = sel ? { ...sel, activity:activityFor(sel) } : null;
+
+  return {
+    theme, compact, isExec, isMember,
+    navItems, stats, currentUser,
+    execBtnStyle: isExec?segOn:segOff, memberBtnStyle: isMember?segOn:segOff,
+    pageTitle:titleMap[nav], pageSubtitle:subMap[nav],
+    mainPad: compact?18:28, screenGap: compact?14:20,
+    isDashboard: nav==="dashboard", isMembers: nav==="members", isFinances: nav==="finances",
+    isEvents: nav==="events", isAttendance: nav==="attendance", isAnnouncements: nav==="announcements",
+    events, dashEvents, announcements, dashAnnouncements,
+    leaderboard, topLeaders, filteredMembers, filterChips,
+    financeRows, fin, me:meVals,
+    selected,
+  };
+}
+
+// ---------- view partials ----------
+const avatar = (size, fz, bg, fg, txt) =>
+  `<div style="width:${size}px; height:${size}px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--font-sans); font-weight:600; font-size:${fz}px; border:1px solid rgba(20,20,19,.06); flex-shrink:0; background:${bg}; color:${fg};">${esc(txt)}</div>`;
+
+function eventRow(ev){
+  return `<div style="display:flex; align-items:center; gap:14px; padding:13px 0; border-top:1px solid var(--cream-300);">
+    <div style="width:50px; flex-shrink:0; text-align:center; background:var(--cream-100); border:1px solid var(--cream-300); border-radius:10px; padding:6px 0;">
+      <div style="font-family:var(--font-sans); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--pkp-primary);">${esc(ev.dateMonth)}</div>
+      <div style="font-family:var(--font-mono); font-size:18px; font-weight:600; color:var(--ink-900); line-height:1.1;">${esc(ev.dateDay)}</div>
+    </div>
+    <div style="flex:1; min-width:0;">
+      <div style="font-family:var(--font-sans); font-size:14.5px; font-weight:600; color:var(--ink-900);">${esc(ev.name)}</div>
+      <div style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500); margin-top:2px;">${esc(ev.time)} · ${esc(ev.location)}</div>
+    </div>
+    <span style="${ev.typeStyle}">${esc(ev.typeLabel)}</span>
+    <div style="width:64px; text-align:right;">
+      <div style="font-family:var(--font-mono); font-size:13px; font-weight:600; color:var(--ink-800);">${ev.rsvp}/${ev.capacity}</div>
+      <div style="font-family:var(--font-sans); font-size:11px; color:var(--ink-500);">RSVP'd</div>
+    </div>
+  </div>`;
+}
+
+function annRowSmall(a){
+  return `<div style="padding:12px 0; border-top:1px solid var(--cream-300);">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:5px;">
+      ${a.pinned ? `<span style="display:inline-flex; color:var(--pkp-primary);">${icon("pin")}</span>` : ""}
+      <span style="font-family:var(--font-sans); font-size:13.5px; font-weight:600; color:var(--ink-900);">${esc(a.title)}</span>
+    </div>
+    <div style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-600); line-height:1.5;">${esc(a.snippet)}</div>
+    <div style="font-family:var(--font-sans); font-size:11.5px; color:var(--ink-400); margin-top:6px;">${esc(a.author)} · ${esc(a.time)}</div>
+  </div>`;
+}
+
+const card = (inner, extra="") => `<div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); ${extra}">${inner}</div>`;
+const sectionHead = (title, linkLabel, navId) => `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+    <h3 style="margin:0; font-family:var(--font-serif); font-size:18px; font-weight:600; color:var(--ink-900);">${title}</h3>
+    ${linkLabel ? `<button data-action="nav" data-arg="${navId}" class="pkp-link" style="font-family:var(--font-sans); font-size:13px; font-weight:600; color:var(--pkp-primary); background:none; border:none; cursor:pointer;">${linkLabel}</button>` : ""}
+  </div>`;
+
+// ---------- screens ----------
+function screenDashboardExec(v){
+  const statCard = (val, topColor, label, sub) => `<div style="background:var(--white); border:1px solid var(--cream-400); border-top:3px solid ${topColor}; border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:20px;">
+      <div style="font-family:var(--font-mono); font-weight:600; font-size:32px; letter-spacing:-.02em; color:var(--ink-900); line-height:1;">${val}</div>
+      <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-700); font-weight:600; margin-top:9px;">${label}</div>
+      <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500); margin-top:2px;">${sub}</div>
+    </div>`;
+  const s = v.stats;
+  return `
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:16px;">
+      ${statCard(s.activeMembers, "var(--hunter-500)", "Active brothers", "of "+s.totalMembers+" initiated")}
+      ${statCard(s.duesPct+"%", "var(--pkp-primary)", "Dues collected", s.duesCollected+" of "+s.duesTarget)}
+      ${statCard(s.avgAttendance+"%", "var(--info-500)", "Avg attendance", "last "+s.meetingsHeld+" meetings")}
+      ${statCard(s.outstanding, "var(--warning-500)", "Outstanding dues", s.dueCount+" brothers owe")}
+    </div>
+
+    <div style="display:grid; grid-template-columns:1.55fr 1fr; gap:16px;">
+      ${card(sectionHead("Upcoming events","View calendar →","events") + `<div style="display:flex; flex-direction:column;">${v.dashEvents.map(eventRow).join("")}</div>`, "padding:22px;")}
+      ${card(sectionHead("Announcements","All →","announcements") + `<div style="display:flex; flex-direction:column;">${v.dashAnnouncements.map(annRowSmall).join("")}</div>`, "padding:22px;")}
+    </div>
+
+    <div style="display:grid; grid-template-columns:1.55fr 1fr; gap:16px;">
+      ${card(sectionHead("Points leaderboard","Full standings →","attendance") + `<div style="display:flex; flex-direction:column;">${v.topLeaders.map(leaderRowSmall).join("")}</div>`, "padding:22px;")}
+      ${duesStatusCard(v)}
+    </div>`;
+}
+
+function leaderRowSmall(m){
+  return `<div style="display:flex; align-items:center; gap:13px; padding:10px 0; border-top:1px solid var(--cream-300);">
+    <span style="${m.rankStyle}">${m.rank}</span>
+    ${avatar(34,12.5,m.avatarBg,m.avatarFg,m.initials)}
+    <div style="flex:1; min-width:0;">
+      <div style="font-family:var(--font-sans); font-size:14px; font-weight:600; color:var(--ink-900);">${esc(m.name)}</div>
+      <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500);">${esc(m.role)}</div>
+    </div>
+    <div style="font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--pkp-accent);">${m.points}</div>
+  </div>`;
+}
+
+function duesStatusCard(v){
+  const s = v.stats;
+  const legend = (color,label,count) => `<div style="display:flex; align-items:center; gap:10px;">
+      <span style="width:9px; height:9px; border-radius:50%; background:${color};"></span>
+      <span style="flex:1; font-family:var(--font-sans); font-size:13.5px; color:var(--ink-700);">${label}</span>
+      <span style="font-family:var(--font-mono); font-size:14px; font-weight:600; color:var(--ink-900);">${count}</span>
+    </div>`;
+  return `<div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px;">
+    <h3 style="margin:0 0 16px; font-family:var(--font-serif); font-size:18px; font-weight:600; color:var(--ink-900);">Dues status</h3>
+    <div style="display:flex; height:12px; border-radius:999px; overflow:hidden; margin-bottom:18px; background:var(--cream-200);">
+      <div style="width:${s.paidWidth}; background:var(--success-500);"></div>
+      <div style="width:${s.partialWidth}; background:var(--warning-500);"></div>
+      <div style="width:${s.dueWidth}; background:var(--danger-500);"></div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      ${legend("var(--success-500)","Paid in full",s.paidCount)}
+      ${legend("var(--warning-500)","Partial / payment plan",s.partialCount)}
+      ${legend("var(--danger-500)","Outstanding",s.dueCount)}
+    </div>
+    <button data-action="nav" data-arg="finances" style="margin-top:18px; width:100%; height:40px; border-radius:var(--radius-pill); border:1px solid var(--pkp-primary-border); background:var(--pkp-primary-tint); color:var(--pkp-primary-strong); font-family:var(--font-sans); font-weight:600; font-size:13.5px; cursor:pointer;">Send dues reminders</button>
+  </div>`;
+}
+
+function screenDashboardMember(v){
+  const me = v.me, s = v.stats;
+  const memberEventRow = ev => `<div style="display:flex; align-items:center; gap:14px; padding:13px 0; border-top:1px solid var(--cream-300);">
+      <div style="width:50px; flex-shrink:0; text-align:center; background:var(--cream-100); border:1px solid var(--cream-300); border-radius:10px; padding:6px 0;">
+        <div style="font-family:var(--font-sans); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--pkp-primary);">${esc(ev.dateMonth)}</div>
+        <div style="font-family:var(--font-mono); font-size:18px; font-weight:600; color:var(--ink-900); line-height:1.1;">${esc(ev.dateDay)}</div>
+      </div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-family:var(--font-sans); font-size:14.5px; font-weight:600; color:var(--ink-900);">${esc(ev.name)}</span>
+          ${ev.required ? `<span style="font-family:var(--font-sans); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--danger-600); background:var(--danger-100); padding:2px 7px; border-radius:999px;">Required</span>` : ""}
+        </div>
+        <div style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500); margin-top:2px;">${esc(ev.time)} · ${esc(ev.location)}</div>
+      </div>
+      <button style="height:34px; padding:0 16px; border-radius:var(--radius-pill); border:1px solid var(--pkp-primary-border); background:var(--pkp-primary-tint); color:var(--pkp-primary-strong); font-family:var(--font-sans); font-weight:600; font-size:12.5px; cursor:pointer;">RSVP</button>
+    </div>`;
+  return `
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+      <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px; display:flex; flex-direction:column; gap:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500); font-weight:600;">My dues</div>
+          <span style="${me.duesStyle}">${esc(me.duesLabel)}</span>
+        </div>
+        <div style="font-family:var(--font-mono); font-weight:600; font-size:30px; color:var(--ink-900); line-height:1;">${esc(me.balanceStr)}</div>
+        <div style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500);">balance due · spring term</div>
+        <button style="margin-top:4px; height:40px; border-radius:var(--radius-pill); border:none; background:var(--pkp-primary); color:#fff; font-family:var(--font-sans); font-weight:600; font-size:13.5px; cursor:pointer;">Pay dues</button>
+      </div>
+      <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500); font-weight:600;">My points</div>
+        <div style="font-family:var(--font-mono); font-weight:600; font-size:30px; color:var(--pkp-accent); line-height:1;">${me.points}</div>
+        <div style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500);">rank #${me.rank} of ${s.totalMembers} brothers</div>
+        <div style="height:8px; border-radius:999px; background:var(--cream-200); overflow:hidden; margin-top:2px;"><div style="width:${me.pointsWidth}; height:100%; background:var(--pkp-accent);"></div></div>
+      </div>
+      <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px; display:flex; flex-direction:column; gap:12px;">
+        <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500); font-weight:600;">My attendance</div>
+        <div style="font-family:var(--font-mono); font-weight:600; font-size:30px; color:var(--ink-900); line-height:1;">${me.attendance}%</div>
+        <div style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500);">${me.meetingsAttended} of ${s.meetingsHeld} meetings</div>
+        <div style="display:flex; gap:5px; margin-top:2px;">${me.dots.map(d=>`<span style="${d.style}"></span>`).join("")}</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1.55fr 1fr; gap:16px;">
+      ${card(`<h3 style="margin:0 0 14px; font-family:var(--font-serif); font-size:18px; font-weight:600; color:var(--ink-900);">Your upcoming events</h3><div style="display:flex; flex-direction:column;">${v.dashEvents.map(memberEventRow).join("")}</div>`, "padding:22px;")}
+      ${card(`<h3 style="margin:0 0 14px; font-family:var(--font-serif); font-size:18px; font-weight:600; color:var(--ink-900);">Announcements</h3><div style="display:flex; flex-direction:column;">${v.dashAnnouncements.map(annRowSmall).join("")}</div>`, "padding:22px;")}
+    </div>`;
+}
+
+function screenMembers(v){
+  const headCell = (txt, align) => `<div style="font-family:var(--font-sans); font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-500);${align?` text-align:${align};`:""}">${txt}</div>`;
+  const cols = "2.2fr 1.4fr 1fr 0.9fr 0.9fr 32px";
+  const rows = v.filteredMembers.map(m=>`
+    <div data-action="openMember" data-arg="${esc(m.name)}" class="pkp-row" style="display:grid; grid-template-columns:${cols}; gap:16px; padding:13px 22px; border-bottom:1px solid var(--cream-200); align-items:center; cursor:pointer;">
+      <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+        ${avatar(36,13,m.avatarBg,m.avatarFg,m.initials)}
+        <div style="min-width:0;">
+          <div style="font-family:var(--font-sans); font-size:14px; font-weight:600; color:var(--ink-900);">${esc(m.name)}</div>
+          <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500);">Class of ${esc(m.classYear)} · ${esc(m.committee)}</div>
+        </div>
+      </div>
+      <div style="font-family:var(--font-sans); font-size:13.5px; color:var(--ink-700);">${esc(m.role)}</div>
+      <div><span style="${m.statusStyle}">${esc(m.statusLabel)}</span></div>
+      <div style="font-family:var(--font-mono); font-size:14px; font-weight:600; color:var(--ink-800); text-align:right;">${m.points}</div>
+      <div style="font-family:var(--font-mono); font-size:14px; color:var(--ink-700); text-align:right;">${m.attendance}%</div>
+      <div style="display:flex; justify-content:flex-end; color:var(--ink-400);">${icon("chevron")}</div>
+    </div>`).join("");
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        ${v.filterChips.map(c=>`<button data-action="setFilter" data-arg="${c.id}" style="${c.style}">${esc(c.label)}</button>`).join("")}
+      </div>
+      <button style="display:inline-flex; align-items:center; gap:7px; height:40px; padding:0 18px; border-radius:var(--radius-pill); border:none; background:var(--pkp-primary); color:#fff; font-family:var(--font-sans); font-weight:600; font-size:13.5px; cursor:pointer; box-shadow:var(--shadow-sm);"><span style="display:inline-flex;">${icon("plus")}</span>Add member</button>
+    </div>
+    <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:${cols}; gap:16px; padding:14px 22px; border-bottom:1px solid var(--cream-300); background:var(--cream-100);">
+        ${headCell("Brother")}${headCell("Role")}${headCell("Status")}${headCell("Points","right")}${headCell("Attend.","right")}<div></div>
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function screenFinances(v){
+  const s = v.stats, fin = v.fin;
+  const headCell = (txt, align) => `<div style="font-family:var(--font-sans); font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-500);${align?` text-align:${align};`:""}">${txt}</div>`;
+  const cols = "2fr 1fr 1fr 1fr 1.1fr";
+  const rows = v.financeRows.map(r=>`
+    <div style="display:grid; grid-template-columns:${cols}; gap:16px; padding:13px 22px; border-bottom:1px solid var(--cream-200); align-items:center;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        ${avatar(32,12,r.avatarBg,r.avatarFg,r.initials)}
+        <span style="font-family:var(--font-sans); font-size:14px; font-weight:600; color:var(--ink-900);">${esc(r.name)}</span>
+      </div>
+      <div style="font-family:var(--font-mono); font-size:13.5px; color:var(--ink-600); text-align:right;">${esc(r.termDues)}</div>
+      <div style="font-family:var(--font-mono); font-size:13.5px; color:var(--ink-800); text-align:right;">${esc(r.paid)}</div>
+      <div style="font-family:var(--font-mono); font-size:13.5px; font-weight:600; text-align:right; color:${r.balanceColor};">${esc(r.balance)}</div>
+      <div style="display:flex; justify-content:flex-end;"><span style="${r.statusStyle}">${esc(r.statusLabel)}</span></div>
+    </div>`).join("");
+  return `
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+      <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px;">
+        <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500); font-weight:600;">Dues collected</div>
+        <div style="font-family:var(--font-mono); font-weight:600; font-size:30px; color:var(--success-600); line-height:1; margin-top:10px;">${s.duesCollected}</div>
+        <div style="height:8px; border-radius:999px; background:var(--cream-200); overflow:hidden; margin-top:12px;"><div style="width:${s.paidWidth}; height:100%; background:var(--success-500);"></div></div>
+        <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500); margin-top:8px;">${s.duesPct}% of ${s.duesTarget} term target</div>
+      </div>
+      <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px;">
+        <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500); font-weight:600;">Outstanding</div>
+        <div style="font-family:var(--font-mono); font-weight:600; font-size:30px; color:var(--danger-600); line-height:1; margin-top:10px;">${s.outstanding}</div>
+        <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500); margin-top:12px;">across ${s.owingCount} brothers</div>
+        <button style="margin-top:12px; height:36px; padding:0 16px; border-radius:var(--radius-pill); border:1px solid var(--pkp-primary-border); background:var(--pkp-primary-tint); color:var(--pkp-primary-strong); font-family:var(--font-sans); font-weight:600; font-size:12.5px; cursor:pointer;">Send reminders</button>
+      </div>
+      <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:22px;">
+        <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500); font-weight:600;">Operating budget</div>
+        <div style="font-family:var(--font-mono); font-weight:600; font-size:30px; color:var(--ink-900); line-height:1; margin-top:10px;">${fin.budgetRemaining}</div>
+        <div style="height:8px; border-radius:999px; background:var(--cream-200); overflow:hidden; margin-top:12px;"><div style="width:${fin.budgetWidth}; height:100%; background:var(--pkp-accent);"></div></div>
+        <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500); margin-top:8px;">${fin.budgetSpent} spent of ${fin.budgetTotal}</div>
+      </div>
+    </div>
+    <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:18px 22px; border-bottom:1px solid var(--cream-300);">
+        <h3 style="margin:0; font-family:var(--font-serif); font-size:18px; font-weight:600; color:var(--ink-900);">Dues by brother</h3>
+        <span style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500);">Spring Term 2026 · ${s.termDues} / member</span>
+      </div>
+      <div style="display:grid; grid-template-columns:${cols}; gap:16px; padding:12px 22px; border-bottom:1px solid var(--cream-300); background:var(--cream-100);">
+        ${headCell("Brother")}${headCell("Term dues","right")}${headCell("Paid","right")}${headCell("Balance","right")}${headCell("Status","right")}
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function screenEvents(v){
+  const rows = v.events.map(ev=>`
+    <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:18px 22px; display:flex; align-items:center; gap:18px;">
+      <div style="width:60px; flex-shrink:0; text-align:center; background:var(--cream-100); border:1px solid var(--cream-300); border-radius:12px; padding:9px 0;">
+        <div style="font-family:var(--font-sans); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--pkp-primary);">${esc(ev.dateMonth)}</div>
+        <div style="font-family:var(--font-mono); font-size:22px; font-weight:600; color:var(--ink-900); line-height:1.1;">${esc(ev.dateDay)}</div>
+        <div style="font-family:var(--font-sans); font-size:10.5px; color:var(--ink-500);">${esc(ev.weekday)}</div>
+      </div>
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:9px; margin-bottom:4px;">
+          <span style="font-family:var(--font-serif); font-size:17px; font-weight:600; color:var(--ink-900);">${esc(ev.name)}</span>
+          <span style="${ev.typeStyle}">${esc(ev.typeLabel)}</span>
+          ${ev.required ? `<span style="font-family:var(--font-sans); font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--danger-600); background:var(--danger-100); padding:2px 7px; border-radius:999px;">Required</span>` : ""}
+        </div>
+        <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500);">${esc(ev.time)} · ${esc(ev.location)} · ${ev.points} pts</div>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:10px; max-width:320px;">
+          <div style="flex:1; height:7px; border-radius:999px; background:var(--cream-200); overflow:hidden;"><div style="width:${ev.rsvpPct}; height:100%; background:var(--pkp-accent);"></div></div>
+          <span style="font-family:var(--font-mono); font-size:12px; color:var(--ink-600);">${ev.rsvp}/${ev.capacity}</span>
+        </div>
+      </div>
+      <button style="height:38px; padding:0 18px; border-radius:var(--radius-pill); border:1px solid #CFC8B6; background:var(--white); color:var(--ink-800); font-family:var(--font-sans); font-weight:600; font-size:13px; cursor:pointer;">Manage</button>
+    </div>`).join("");
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span style="font-family:var(--font-serif); font-size:19px; font-weight:600; color:var(--ink-900);">April 2026</span>
+        <span style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500); background:var(--cream-200); padding:4px 11px; border-radius:999px;">${v.events.length} events</span>
+      </div>
+      <button style="display:inline-flex; align-items:center; gap:7px; height:40px; padding:0 18px; border-radius:var(--radius-pill); border:none; background:var(--pkp-primary); color:#fff; font-family:var(--font-sans); font-weight:600; font-size:13.5px; cursor:pointer; box-shadow:var(--shadow-sm);"><span style="display:inline-flex;">${icon("plus")}</span>Create event</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px;">${rows}</div>`;
+}
+
+function screenAttendance(v){
+  const s = v.stats;
+  const headCell = (txt, align) => `<div style="font-family:var(--font-sans); font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-500);${align?` text-align:${align};`:""}">${txt}</div>`;
+  const cols = "44px 2fr 1fr 1.4fr 0.8fr";
+  const rows = v.leaderboard.map(m=>`
+    <div style="display:grid; grid-template-columns:${cols}; gap:16px; padding:12px 22px; border-bottom:1px solid var(--cream-200); align-items:center;">
+      <span style="${m.rankStyle}">${m.rank}</span>
+      <div style="display:flex; align-items:center; gap:12px;">
+        ${avatar(34,12.5,m.avatarBg,m.avatarFg,m.initials)}
+        <div>
+          <div style="font-family:var(--font-sans); font-size:14px; font-weight:600; color:var(--ink-900);">${esc(m.name)}</div>
+          <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500);">${esc(m.role)}</div>
+        </div>
+      </div>
+      <div style="font-family:var(--font-mono); font-size:15px; font-weight:600; color:var(--pkp-accent); text-align:right;">${m.points}</div>
+      <div style="display:flex; gap:5px; justify-content:center;">${m.dots.map(d=>`<span style="${d.style}"></span>`).join("")}</div>
+      <div style="font-family:var(--font-mono); font-size:13.5px; color:var(--ink-700); text-align:right;">${m.attendance}%</div>
+    </div>`).join("");
+  const statCard = (val, color, label) => `<div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:20px;">
+      <div style="font-family:var(--font-mono); font-weight:600; font-size:30px; color:${color}; line-height:1;">${val}</div>
+      <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-700); font-weight:600; margin-top:8px;">${label}</div>
+    </div>`;
+  return `
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
+      ${statCard(s.avgAttendance+"%","var(--ink-900)","Chapter attendance")}
+      ${statCard(s.pointsTerm,"var(--pkp-accent)","Points awarded this term")}
+      ${statCard(s.meetingsHeld,"var(--ink-900)","Meetings held")}
+    </div>
+    <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); overflow:hidden;">
+      <div style="display:grid; grid-template-columns:${cols}; gap:16px; padding:14px 22px; border-bottom:1px solid var(--cream-300); background:var(--cream-100);">
+        ${headCell("#")}${headCell("Brother")}${headCell("Points","right")}${headCell("Last 8 meetings","center")}${headCell("Rate","right")}
+      </div>
+      ${rows}
+    </div>`;
+}
+
+function screenAnnouncements(v){
+  const composer = v.isExec ? `<div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:18px 22px; display:flex; align-items:center; gap:14px;">
+      ${avatar(40,14,v.currentUser.avatarBg,v.currentUser.avatarFg,v.currentUser.initials)}
+      <div style="flex:1; height:42px; border:1px solid var(--cream-400); border-radius:var(--radius-pill); background:var(--cream-50); display:flex; align-items:center; padding:0 18px; font-family:var(--font-sans); font-size:13.5px; color:var(--ink-400);">Share an update with the chapter…</div>
+      <button style="height:40px; padding:0 20px; border-radius:var(--radius-pill); border:none; background:var(--pkp-primary); color:#fff; font-family:var(--font-sans); font-weight:600; font-size:13.5px; cursor:pointer;">Post</button>
+    </div>` : "";
+  const cards = v.announcements.map(a=>`
+    <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); padding:20px 22px; border-left:${a.accentBorder};">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+        ${avatar(38,13,a.avatarBg,a.avatarFg,a.initials)}
+        <div style="flex:1;">
+          <div style="font-family:var(--font-sans); font-size:14px; font-weight:600; color:var(--ink-900);">${esc(a.author)}</div>
+          <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500);">${esc(a.role)} · ${esc(a.time)}</div>
+        </div>
+        ${a.pinned ? `<span style="display:inline-flex; align-items:center; gap:5px; font-family:var(--font-sans); font-size:11px; font-weight:600; color:var(--pkp-primary); background:var(--pkp-primary-tint); padding:4px 10px; border-radius:999px;"><span style="display:inline-flex;">${icon("pin")}</span>Pinned</span>` : ""}
+      </div>
+      <h3 style="margin:0 0 6px; font-family:var(--font-serif); font-size:18px; font-weight:600; color:var(--ink-900);">${esc(a.title)}</h3>
+      <div style="font-family:var(--font-sans); font-size:14px; color:var(--ink-600); line-height:1.6;">${esc(a.body)}</div>
+      <div style="display:flex; gap:18px; margin-top:14px; padding-top:14px; border-top:1px solid var(--cream-200);">
+        <span style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500);">${a.reactions} reactions</span>
+        <span style="font-family:var(--font-sans); font-size:12.5px; color:var(--ink-500);">${a.comments} comments</span>
+      </div>
+    </div>`).join("");
+  return composer + `<div style="display:flex; flex-direction:column; gap:12px;">${cards}</div>`;
+}
+
+function memberDrawer(v){
+  const sel = v.selected;
+  if(!sel) return "";
+  const detailRow = (label, valHtml) => `<div style="display:flex; justify-content:space-between;"><span style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500);">${label}</span>${valHtml}</div>`;
+  const activity = sel.activity.map(act=>`
+    <div style="display:flex; gap:11px; padding:9px 0; border-top:1px solid var(--cream-200);">
+      <span style="width:7px; height:7px; border-radius:50%; margin-top:6px; flex-shrink:0; background:${act.color};"></span>
+      <div>
+        <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-800);">${esc(act.text)}</div>
+        <div style="font-family:var(--font-mono); font-size:11px; color:var(--ink-400); margin-top:2px;">${esc(act.time)}</div>
+      </div>
+    </div>`).join("");
+  return `
+    <div data-action="closeMember" style="position:absolute; inset:0; background:rgba(20,20,19,.32); z-index:40; animation:pkpScrim .2s ease;"></div>
+    <div style="position:absolute; top:0; right:0; bottom:0; width:400px; background:var(--cream-50); border-left:1px solid var(--cream-400); box-shadow:var(--shadow-xl); z-index:41; display:flex; flex-direction:column; animation:pkpSlide .28s cubic-bezier(.16,1,.3,1);">
+      <div style="padding:22px; border-bottom:1px solid var(--cream-300); display:flex; align-items:flex-start; gap:16px; background:var(--white);">
+        ${avatar(58,20,sel.avatarBg,sel.avatarFg,sel.initials)}
+        <div style="flex:1;">
+          <h2 style="margin:0; font-family:var(--font-serif); font-size:21px; font-weight:600; color:var(--ink-900);">${esc(sel.name)}</h2>
+          <div style="font-family:var(--font-sans); font-size:13.5px; color:var(--ink-500); margin-top:3px;">${esc(sel.role)} · Class of ${esc(sel.classYear)}</div>
+          <div style="margin-top:8px;"><span style="${sel.statusStyle}">${esc(sel.statusLabel)}</span></div>
+        </div>
+        <button data-action="closeMember" style="width:32px; height:32px; border-radius:50%; border:1px solid var(--cream-400); background:var(--white); color:var(--ink-500); cursor:pointer; font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center;">✕</button>
+      </div>
+      <div style="flex:1; overflow-y:auto; padding:22px; display:flex; flex-direction:column; gap:18px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-md); padding:14px;">
+            <div style="font-family:var(--font-mono); font-size:22px; font-weight:600; color:var(--pkp-accent); line-height:1;">${sel.points}</div>
+            <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500); margin-top:6px;">Points · rank #${sel.rank}</div>
+          </div>
+          <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-md); padding:14px;">
+            <div style="font-family:var(--font-mono); font-size:22px; font-weight:600; color:var(--ink-900); line-height:1;">${sel.attendance}%</div>
+            <div style="font-family:var(--font-sans); font-size:12px; color:var(--ink-500); margin-top:6px;">Attendance</div>
+          </div>
+        </div>
+        <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-md); padding:16px;">
+          <div style="font-family:var(--font-sans); font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-500); margin-bottom:12px;">Details</div>
+          <div style="display:flex; flex-direction:column; gap:11px;">
+            ${detailRow("Committee", `<span style="font-family:var(--font-sans); font-size:13px; color:var(--ink-800); font-weight:500;">${esc(sel.committee)}</span>`)}
+            ${detailRow("Dues", `<span style="${sel.duesStyle}">${esc(sel.duesLabel)}</span>`)}
+            ${detailRow("Balance", `<span style="font-family:var(--font-mono); font-size:13px; color:var(--ink-800); font-weight:600;">${esc(sel.balanceStr)}</span>`)}
+            ${detailRow("Email", `<span style="font-family:var(--font-sans); font-size:13px; color:var(--ink-800);">${esc(sel.email)}</span>`)}
+          </div>
+        </div>
+        <div style="background:var(--white); border:1px solid var(--cream-400); border-radius:var(--radius-md); padding:16px;">
+          <div style="font-family:var(--font-sans); font-size:11.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-500); margin-bottom:12px;">Recent activity</div>
+          <div style="display:flex; flex-direction:column;">${activity}</div>
+        </div>
+      </div>
+      <div style="padding:16px 22px; border-top:1px solid var(--cream-300); background:var(--white); display:flex; gap:10px;">
+        <button style="flex:1; height:42px; border-radius:var(--radius-pill); border:none; background:var(--pkp-primary); color:#fff; font-family:var(--font-sans); font-weight:600; font-size:13.5px; cursor:pointer;">Message</button>
+        <button style="flex:1; height:42px; border-radius:var(--radius-pill); border:1px solid #CFC8B6; background:var(--white); color:var(--ink-800); font-family:var(--font-sans); font-weight:600; font-size:13.5px; cursor:pointer;">Edit profile</button>
+      </div>
+    </div>`;
+}
+
+// ---------- sidebar / topbar ----------
+function sidebar(v){
+  const navBtns = v.navItems.map(it=>`
+    <button data-action="nav" data-arg="${it.id}" class="pkp-nav-btn" style="${it.style}">
+      <span style="display:inline-flex; width:18px; height:18px;">${it.icon}</span>
+      <span>${esc(it.label)}</span>
+    </button>`).join("");
+  return `<aside style="width:248px; flex-shrink:0; background:var(--pkp-side-bg); border-right:1px solid var(--pkp-side-border); display:flex; flex-direction:column; padding:18px 14px; height:100%;">
+    <div style="display:flex; align-items:center; gap:12px; padding:6px 8px 20px;">
+      <div style="width:42px; height:42px; border-radius:11px; background:var(--pkp-crest-bg); color:var(--pkp-crest-fg); display:flex; align-items:center; justify-content:center; font-family:var(--font-serif); font-weight:600; font-size:17px; letter-spacing:.01em; box-shadow:var(--shadow-sm);">ΦΚΨ</div>
+      <div>
+        <div style="font-family:var(--font-serif); font-weight:600; font-size:16px; letter-spacing:-.01em; color:var(--pkp-side-fg); line-height:1.1;">Phi Kappa Psi</div>
+        <div style="font-family:var(--font-sans); font-size:12px; color:var(--pkp-side-muted); margin-top:2px;">Cal Beta · Stanford</div>
+      </div>
+    </div>
+    <nav style="display:flex; flex-direction:column; gap:3px;">${navBtns}</nav>
+    <div style="margin-top:auto; padding:14px; background:var(--pkp-side-card); border-radius:var(--radius-md); border:1px solid var(--pkp-side-border);">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+        <span style="width:7px; height:7px; border-radius:50%; background:var(--success-500);"></span>
+        <span style="font-family:var(--font-sans); font-weight:600; font-size:12.5px; color:var(--pkp-side-fg);">Spring Term 2026</span>
+      </div>
+      <div style="font-family:var(--font-sans); font-size:12px; color:var(--pkp-side-muted); line-height:1.5;">${v.stats.activeMembers} active brothers · ${v.stats.duesPct}% dues collected</div>
+    </div>
+  </aside>`;
+}
+
+function themeSwatches(){
+  // Enhancement: surface the three designed themes (cardinal/hunter/heritage)
+  const swatch = (id, color, title) => {
+    const on = state.theme === id;
+    return `<button data-action="setTheme" data-arg="${id}" title="${title}" style="width:22px; height:22px; border-radius:50%; cursor:pointer; padding:0; background:${color}; border:2px solid ${on ? "var(--ink-900)" : "rgba(20,20,19,.12)"}; box-shadow:${on ? "0 0 0 2px var(--cream-50)" : "none"};"></button>`;
+  };
+  return `<div style="display:flex; align-items:center; gap:7px;" title="Theme">
+    ${swatch("cardinal","#9E1B32","Cardinal")}
+    ${swatch("hunter","#1B4332","Hunter")}
+    ${swatch("heritage","#123528","Heritage")}
+  </div>`;
+}
+
+function topbar(v){
+  return `<header style="height:68px; flex-shrink:0; border-bottom:1px solid var(--cream-400); background:rgba(250,249,245,.82); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:space-between; padding:0 26px; z-index:5;">
+    <div>
+      <h1 style="margin:0; font-family:var(--font-serif); font-size:22px; font-weight:600; letter-spacing:-.01em; color:var(--ink-900); line-height:1.1;">${esc(v.pageTitle)}</h1>
+      <div style="font-family:var(--font-sans); font-size:13px; color:var(--ink-500); margin-top:2px;">${esc(v.pageSubtitle)}</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+      ${themeSwatches()}
+      <div style="display:flex; align-items:center; gap:8px; height:38px; padding:0 14px; background:var(--white); border:1px solid #CFC8B6; border-radius:var(--radius-pill); width:210px;">
+        <span style="display:inline-flex; color:var(--ink-400);">${icon("search")}</span>
+        <span style="font-family:var(--font-sans); font-size:13.5px; color:var(--ink-400);">Search chapter…</span>
+      </div>
+      <div style="display:flex; background:var(--cream-200); border-radius:var(--radius-pill); padding:3px; gap:2px;">
+        <button data-action="setRole" data-arg="exec" style="${v.execBtnStyle}">Exec</button>
+        <button data-action="setRole" data-arg="member" style="${v.memberBtnStyle}">Member</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:9px;">
+        ${avatar(38,14,v.currentUser.avatarBg,v.currentUser.avatarFg,v.currentUser.initials)}
+        <div style="line-height:1.15;">
+          <div style="font-family:var(--font-sans); font-size:13.5px; font-weight:600; color:var(--ink-900);">${esc(v.currentUser.name)}</div>
+          <div style="font-family:var(--font-sans); font-size:11.5px; color:var(--ink-500);">${esc(v.currentUser.role)}</div>
+        </div>
+      </div>
+    </div>
+  </header>`;
+}
+
+// ---------- render ----------
+function screenContent(v){
+  if(v.isDashboard) return v.isExec ? screenDashboardExec(v) : screenDashboardMember(v);
+  if(v.isMembers) return screenMembers(v);
+  if(v.isFinances) return screenFinances(v);
+  if(v.isEvents) return screenEvents(v);
+  if(v.isAttendance) return screenAttendance(v);
+  if(v.isAnnouncements) return screenAnnouncements(v);
+  return "";
+}
+
+function render(){
+  const v = computeVals();
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div data-theme="${v.theme}" style="display:flex; height:100vh; overflow:hidden; background:var(--cream-50); font-family:var(--font-sans); color:var(--ink-700);">
+      ${sidebar(v)}
+      <div style="flex:1; display:flex; flex-direction:column; position:relative; min-width:0;">
+        ${topbar(v)}
+        <main style="flex:1; overflow-y:auto; padding:${v.mainPad}px;">
+          <div style="max-width:1180px; margin:0 auto; display:flex; flex-direction:column; gap:${v.screenGap}px;">
+            ${screenContent(v)}
+          </div>
+        </main>
+        ${memberDrawer(v)}
+      </div>
+    </div>`;
+}
+
+// ---------- dispatch ----------
+const ACTIONS = {
+  nav: id => setState({ nav:id, selected:null }),
+  setRole: role => setState({ role, nav:"dashboard", selected:null }),
+  setFilter: id => setState({ filter:id }),
+  openMember: name => setState({ selected:name }),
+  closeMember: () => setState({ selected:null }),
+  setTheme: id => setState({ theme:id }),
+};
+
+document.getElementById("app").addEventListener("click", e => {
+  const el = e.target.closest("[data-action]");
+  if(!el) return;
+  const fn = ACTIONS[el.getAttribute("data-action")];
+  if(fn){ e.stopPropagation(); fn(el.getAttribute("data-arg")); }
+});
+
+render();
+</script>
+</body>
+</html>
