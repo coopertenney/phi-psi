@@ -36,6 +36,8 @@ export interface MemberRow {
   points: number;
   attendancePct: number;
   balanceCents: number;
+  chargedCents: number;      // live dues charged this term (member_finances)
+  paidCents: number;         // live dues paid this term (member_finances)
   duesState: DuesState;
   flags: MemberFlag[];       // accountability / compliance flags
 }

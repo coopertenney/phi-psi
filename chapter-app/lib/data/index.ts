@@ -52,6 +52,8 @@ export async function getMembers(): Promise<MemberRow[]> {
       points: s.points,
       attendancePct: s.attendance_pct,
       balanceCents: fin?.balance_cents ?? 0,
+      chargedCents: fin?.charged_cents ?? 0,
+      paidCents: fin?.paid_cents ?? 0,
       duesState: fin?.dues_state ?? 'paid',
       flags: s.flags ?? [],
     };
@@ -254,7 +256,9 @@ export async function getAnnouncements(): Promise<AnnouncementRow[]> {
   // filtering needed here, unlike the mock path which filters client-side.
   const { data, error } = await sb
     .from('announcements')
-    .select('id, title, body, pinned, audience, category, created_at, memberships(position, access_role, profiles(full_name))')
+    // Disambiguate the embed: announcements links to memberships via BOTH
+    // author_id and the announcement_reactions junction, so name the FK.
+    .select('id, title, body, pinned, audience, category, created_at, memberships!announcements_author_id_fkey(position, access_role, profiles(full_name))')
     .eq('chapter_id', CHAPTER_ID)
     .order('created_at', { ascending: false });
   if (error) throw error;

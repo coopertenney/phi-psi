@@ -255,7 +255,7 @@ function MemberFormModal({ base, onClose, onSave }: { base?: MemberRow; onClose:
           membershipId: `local-${Date.now()}`, fullName: fullName.trim(), email: email.trim(), phone: phone.trim(),
           position: pos, roleLabel: roleLabelFor(pos, status), status, classYear: Number(classYear) || null,
           committee: committee.trim() || 'Unassigned', bigName: null, littleNames: [], points: 0,
-          attendancePct: 100, balanceCents: 0, duesState: 'paid', flags: [],
+          attendancePct: 100, balanceCents: 0, chargedCents: 0, paidCents: 0, duesState: 'paid', flags: [],
         };
     onSave(built);
   };
@@ -332,7 +332,7 @@ function parseClass(text: string): { members: MemberRow[]; skipped: number } {
       position: pos, roleLabel: roleLabelFor(pos, 'new'), status: 'new',
       classYear: cy ? Number(cy) : null, committee: f.committee.trim() || 'Unassigned',
       bigName: null, littleNames: [], points: 0, attendancePct: 100,
-      balanceCents: 0, duesState: 'paid', flags: [],
+      balanceCents: 0, chargedCents: 0, paidCents: 0, duesState: 'paid', flags: [],
     });
   });
   return { members, skipped };

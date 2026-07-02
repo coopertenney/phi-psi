@@ -106,15 +106,22 @@ const Check = (
   </svg>
 );
 
-export function FinancesScreen({ members, stats, settings }: { members: MemberRow[]; stats: ChapterStats; settings: ChapterSettings }) {
+export function FinancesScreen({ members, stats, settings, myMembershipId, live }: {
+  members: MemberRow[]; stats: ChapterStats; settings: ChapterSettings;
+  myMembershipId?: string | null; live?: boolean;
+}) {
   const { role, persona } = useApp();
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Suspense fallback={null}><CheckoutBanner /></Suspense>
       {role === 'member' ? (
         (() => {
-          const me = currentMember(members, persona);
-          return me ? <MemberFinances member={me} settings={settings} /> : <p style={{ color: 'var(--ink-500)' }}>No dues on file.</p>;
+          // Live: the real signed-in member (by membership id). Mock/demo: the
+          // persona toggle's stand-in.
+          const me = myMembershipId
+            ? members.find((m) => m.membershipId === myMembershipId)
+            : currentMember(members, persona);
+          return me ? <MemberFinances member={me} settings={settings} live={live} /> : <p style={{ color: 'var(--ink-500)' }}>No dues on file.</p>;
         })()
       ) : (
         <ExecFinances members={members} stats={stats} settings={settings} />
@@ -426,14 +433,20 @@ function Ledger({ entries }: { entries: ReturnType<typeof quarterLedger> }) {
 
 /* ─────────────────────────── Member view ─────────────────────────── */
 
-function MemberFinances({ member: m, settings }: { member: MemberRow; settings: ChapterSettings }) {
+function MemberFinances({ member: m, settings, live }: { member: MemberRow; settings: ChapterSettings; live?: boolean }) {
   const db = duesBadge(m.duesState);
-  const dues = duesFor(m);
-  const pct = Math.min(100, Math.round((dues.paid / dues.charged) * 100));
+  // Live: real balances from member_finances (on the MemberRow). Mock/demo: the
+  // quarter model. In live mode we deliberately show NO fines or invented
+  // payment history — there's no fines table yet, and finesFor()/quarterLedger()
+  // fabricate data off attendance/dues state, which would be wrong for a real member.
+  const dues = live
+    ? { charged: m.chargedCents, paid: m.paidCents, balance: m.balanceCents }
+    : duesFor(m);
+  const pct = dues.charged > 0 ? Math.min(100, Math.round((dues.paid / dues.charged) * 100)) : 0;
   const settled = dues.balance === 0;
-  const ledger = quarterLedger(m);
-  const fines = finesFor(m);
-  const finesOut = finesOutstanding(m);
+  const ledger = live ? [] : quarterLedger(m);
+  const fines = live ? [] : finesFor(m);
+  const finesOut = live ? 0 : finesOutstanding(m);
 
   return (
     <div style={{ maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 18 }}>

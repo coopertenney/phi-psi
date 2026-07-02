@@ -60,7 +60,10 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on everything except Next internals and static asset files. This keeps
-  // the auth check off images/fonts/_next chunks.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?)$).*)'],
+  // Run on everything except Next internals, static asset files, and API routes.
+  // API routes self-authenticate: the Stripe webhook (/api/stripe/webhook) has
+  // no user session and verifies Stripe's signature instead, and the checkout
+  // route does its own getUser() check (returning a JSON 401, not an HTML
+  // redirect). Gating them here would 307-redirect Stripe's webhook to /login.
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?)$).*)'],
 };

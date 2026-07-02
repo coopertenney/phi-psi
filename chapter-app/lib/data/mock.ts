@@ -196,6 +196,8 @@ export const mockMembers: MemberRow[] = SEED.map((s, i) => {
     points: pointsById.get(id) ?? 0,
     attendancePct: pct,
     balanceCents: balanceFor(s.dues),
+    chargedCents: 85000,
+    paidCents: 85000 - balanceFor(s.dues),
     duesState: s.dues,
     flags: flagsFor(s, i, pct),
   };
