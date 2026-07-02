@@ -23,6 +23,7 @@ const KIND: Record<FileKind, { color: string; label: string }> = {
   slides: { color: '#e08a1e', label: 'Slides' },
   image:  { color: '#8b5cf6', label: 'Image' },
   file:   { color: 'var(--ink-400, #9aa0a6)', label: 'File' },
+  link:   { color: '#2f6fd0', label: 'Link' },
 };
 
 const KB = 1024, MB = 1024 * 1024;
@@ -50,6 +51,14 @@ function Glyph({ kind, size = 20 }: { kind: FileKind; size?: number }) {
       </svg>
     );
   }
+  if (kind === 'link') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+      </svg>
+    );
+  }
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -68,6 +77,7 @@ export function FilesScreen({ items: seeded, live, ownerName }: {
   useEffect(() => setItems(seeded), [seeded]); // follow server refreshes
   const [folderId, setFolderId] = useState<string | null>(null); // null = root
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newLinkOpen, setNewLinkOpen] = useState(false);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -121,6 +131,31 @@ export function FilesScreen({ items: seeded, live, ownerName }: {
     router.refresh();
   };
 
+  // Add an external link (Google Drive/Docs/Sheets, any URL) as an item. Stored
+  // as kind 'link' with a url and no storage bytes; opens in a new tab.
+  const addLink = async (name: string, rawUrl: string) => {
+    const trimmed = name.trim();
+    let url = rawUrl.trim();
+    if (!trimmed || !url) return;
+    if (!/^https?:\/\//i.test(url)) url = `https://${url}`; // tolerate a pasted "docs.google.com/…"
+    setNewLinkOpen(false);
+    if (!live) {
+      setItems((prev) => [...prev, {
+        id: `l-new-${Date.now()}`, name: trimmed, kind: 'link', parentId: folderId,
+        audience: 'all', ownerName, updatedAt: NOW.toISOString(), sizeBytes: null, url,
+      }]);
+      return;
+    }
+    setBusy(true);
+    const { error } = await getBrowserSupabase().from('files').insert({
+      chapter_id: CHAPTER_ID, parent_id: folderId, kind: 'link',
+      name: trimmed, audience: 'all', owner_name: ownerName, url,
+    });
+    setBusy(false);
+    if (error) return void alert(error.message);
+    router.refresh();
+  };
+
   const onUpload = async (files: FileList | null) => {
     if (!files?.length) return;
     if (uploadRef.current) uploadRef.current.value = '';
@@ -153,8 +188,13 @@ export function FilesScreen({ items: seeded, live, ownerName }: {
     }
   };
 
-  // Open a file: private bucket → short-lived signed URL in a new tab.
+  // Open an item in a new tab. Links go straight to their URL; uploaded files
+  // in the private bucket need a short-lived signed URL first.
   const openFile = async (item: DriveItem) => {
+    if (item.kind === 'link') {
+      if (item.url) window.open(item.url, '_blank', 'noopener');
+      return;
+    }
     if (!live || !item.storagePath) return;
     const { data, error } = await getBrowserSupabase().storage.from(BUCKET).createSignedUrl(item.storagePath, 60);
     if (error || !data) return void alert(error?.message ?? 'Could not open file.');
@@ -209,6 +249,10 @@ export function FilesScreen({ items: seeded, live, ownerName }: {
               <button className="pkp-btn-ghost" onClick={() => setNewFolderOpen(true)}
                 style={ghostBtn}>
                 <span style={{ display: 'inline-flex' }}>{icons.plus}</span> New folder
+              </button>
+              <button className="pkp-btn-ghost" onClick={() => setNewLinkOpen(true)}
+                style={ghostBtn}>
+                <LinkIcon /> Add link
               </button>
               <button className="pkp-btn-primary" onClick={() => uploadRef.current?.click()}
                 style={{ height: 38, padding: '0 16px', fontSize: 13.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -268,7 +312,7 @@ export function FilesScreen({ items: seeded, live, ownerName }: {
               </thead>
               <tbody>
                 {contents.files.map((f) => {
-                  const openable = live && !!f.storagePath;
+                  const openable = f.kind === 'link' ? !!f.url : (live && !!f.storagePath);
                   return (
                     <tr key={f.id} style={{ borderTop: '1px solid var(--cream-200)', cursor: openable ? 'pointer' : 'default' }}
                       onClick={openable ? () => openFile(f) : undefined}
@@ -297,6 +341,7 @@ export function FilesScreen({ items: seeded, live, ownerName }: {
       )}
 
       {newFolderOpen && <NewFolder onClose={() => setNewFolderOpen(false)} onCreate={addFolder} />}
+      {newLinkOpen && <NewLink onClose={() => setNewLinkOpen(false)} onCreate={addLink} />}
     </div>
   );
 }
@@ -337,6 +382,34 @@ function NewFolder({ onClose, onCreate }: { onClose: () => void; onCreate: (name
   );
 }
 
+function NewLink({ onClose, onCreate }: { onClose: () => void; onCreate: (name: string, url: string) => void }) {
+  const [name, setName] = useState('');
+  const [url, setUrl] = useState('');
+  const ok = name.trim() !== '' && url.trim() !== '';
+  const submit = () => { if (ok) onCreate(name, url); };
+  return (
+    <Modal
+      title="Add link"
+      sub="Link to a Google Drive folder, a Doc/Sheet, or any web page."
+      onClose={onClose}
+      footer={
+        <>
+          <button className="pkp-btn-ghost" onClick={onClose} style={ghostBtn}>Cancel</button>
+          <button className="pkp-btn-primary" disabled={!ok} onClick={submit}
+            style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: ok ? 1 : 0.5, cursor: ok ? 'pointer' : 'not-allowed' }}>
+            Add link
+          </button>
+        </>
+      }
+    >
+      <Field label="Name" autoFocus value={name} onChange={(e) => setName(e.target.value)}
+        placeholder="e.g. Chapter Roster (Google Sheet)" />
+      <Field label="URL" value={url} onChange={(e) => setUrl(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} placeholder="https://docs.google.com/…" />
+    </Modal>
+  );
+}
+
 // Small trash button used on folder cards + file rows (exec only).
 function RowDelete({ onClick, disabled }: { onClick: (e: React.MouseEvent) => void; disabled?: boolean }) {
   return (
@@ -354,6 +427,13 @@ function RowDelete({ onClick, disabled }: { onClick: (e: React.MouseEvent) => vo
 const UploadIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" />
+  </svg>
+);
+
+const LinkIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </svg>
 );
 

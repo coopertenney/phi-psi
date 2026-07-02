@@ -172,7 +172,7 @@ export interface PnmRow {
    bytes live in a Supabase Storage bucket. */
 
 // 'folder' plus the file types we render a distinct glyph for.
-export type FileKind = 'folder' | 'pdf' | 'doc' | 'sheet' | 'slides' | 'image' | 'file';
+export type FileKind = 'folder' | 'pdf' | 'doc' | 'sheet' | 'slides' | 'image' | 'file' | 'link';
 
 export interface DriveItem {
   id: string;
@@ -183,5 +183,6 @@ export interface DriveItem {
   ownerName: string;
   updatedAt: string;                 // ISO
   sizeBytes: number | null;          // null for folders
-  storagePath?: string | null;       // bucket path (live files only; for download)
+  storagePath?: string | null;       // bucket path (live uploaded files; for download)
+  url?: string | null;               // external URL (kind 'link'; opens in a new tab)
 }

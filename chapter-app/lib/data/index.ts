@@ -420,5 +420,6 @@ export async function getFiles(): Promise<DriveItem[]> {
     updatedAt: r.created_at,
     sizeBytes: r.size_bytes,
     storagePath: r.storage_path,
+    url: r.url ?? null,
   }));
 }
