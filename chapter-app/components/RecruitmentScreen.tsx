@@ -1,15 +1,26 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { PnmRow, PnmStage, PnmNote } from '@/lib/types';
 import { relativeDay, type BadgeTone } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { FUNNEL, STAGE_META, nextStage, pnmNotes } from '@/lib/recruitment';
 import { MOCK_USER } from '@/lib/session';
+import { createPnm, setPnmStage, ratePnm, votePnm, addPnmNote, type PnmInput } from '@/app/recruitment/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 import { icons } from './icons';
 import { Modal, Field, Select, FieldRow } from './form';
+
+type LiveProps = {
+  live?: boolean;
+  notesByPnm?: Record<string, PnmNote[]>;
+  myRatings?: Record<string, number>;
+  myVotes?: Record<string, 'yes' | 'no'>;
+};
+
+type PnmFormInput = { fullName: string; standing: string; major: string; referredBy: string | null; stage: PnmStage };
 
 /* ─────────────────────────── Shared bits ─────────────────────────── */
 
@@ -66,9 +77,12 @@ function VoteBar({ yes, no }: { yes: number; no: number }) {
   );
 }
 
-export function RecruitmentScreen({ pnms }: { pnms: PnmRow[] }) {
+export function RecruitmentScreen({ pnms, live = false, notesByPnm = {}, myRatings = {}, myVotes = {} }: { pnms: PnmRow[] } & LiveProps) {
   const { role } = useApp();
-  return role === 'member' ? <MemberRecruitment pnms={pnms} /> : <ExecRecruitment pnms={pnms} />;
+  const liveProps = { live, notesByPnm, myRatings, myVotes };
+  return role === 'member'
+    ? <MemberRecruitment pnms={pnms} {...liveProps} />
+    : <ExecRecruitment pnms={pnms} {...liveProps} />;
 }
 
 /* ─────────────────────────── Exec: recruitment chair ─────────────────────────── */
@@ -87,15 +101,52 @@ type Filter = (typeof CHIPS)[number]['id'];
 
 const PNM_GRID = '2.2fr 1.4fr 1.2fr 1fr 32px';
 
-function ExecRecruitment({ pnms: initial }: { pnms: PnmRow[] }) {
+function ExecRecruitment({ pnms: initial, live = false, notesByPnm = {}, myRatings = {}, myVotes = {} }: { pnms: PnmRow[] } & LiveProps) {
+  const router = useRouter();
   const [pnms, setPnms] = useState<PnmRow[]>(initial);
+  useEffect(() => setPnms(initial), [initial]); // follow server refreshes
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const addPnm = (p: PnmRow) => { setPnms((x) => [p, ...x]); setAdding(false); };
-  const setStage = (id: string, stage: PnmStage) =>
-    setPnms((prev) => prev.map((p) => (p.id === id ? { ...p, stage } : p)));
+  const addPnm = async (input: PnmFormInput) => {
+    if (!live) {
+      setPnms((x) => [{
+        id: `pnm-local-${Date.now()}`, fullName: input.fullName, standing: input.standing,
+        major: input.major || 'Undeclared',
+        email: `${input.fullName.toLowerCase().replace(/[^a-z]+/g, '.')}@stanford.edu`,
+        phone: '', referredBy: input.referredBy, stage: input.stage,
+        rating: 0, ratingCount: 0, votesYes: 0, votesNo: 0, eventsAttended: 0,
+      }, ...x]);
+      setAdding(false);
+      return;
+    }
+    const asInput: PnmInput = {
+      fullName: input.fullName, standing: input.standing, major: input.major || 'Undeclared',
+      email: `${input.fullName.toLowerCase().replace(/[^a-z]+/g, '.')}@stanford.edu`, phone: '',
+      referredBy: input.referredBy, stage: input.stage,
+    };
+    try {
+      await createPnm(asInput);
+      router.refresh();
+      setAdding(false);
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not add PNM.');
+    }
+  };
+
+  const setStage = async (id: string, stage: PnmStage) => {
+    if (!live) {
+      setPnms((prev) => prev.map((p) => (p.id === id ? { ...p, stage } : p)));
+      return;
+    }
+    try {
+      await setPnmStage(id, stage);
+      router.refresh();
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not update stage.');
+    }
+  };
 
   const rows = filter === 'all' ? pnms : pnms.filter((p) => p.stage === filter);
   const selected = pnms.find((p) => p.id === selectedId) ?? null;
@@ -178,13 +229,18 @@ function ExecRecruitment({ pnms: initial }: { pnms: PnmRow[] }) {
         {rows.length === 0 && <div style={{ padding: 32, textAlign: 'center', fontSize: 13.5, color: 'var(--ink-500)' }}>No PNMs in this stage.</div>}
       </div>
 
-      {selected && <PnmDrawer pnm={selected} exec onStage={setStage} onClose={() => setSelectedId(null)} />}
+      {selected && (
+        <PnmDrawer
+          pnm={selected} exec live={live} notesByPnm={notesByPnm} myRatings={myRatings} myVotes={myVotes}
+          onStage={setStage} onClose={() => setSelectedId(null)}
+        />
+      )}
       {adding && <PnmFormModal onClose={() => setAdding(false)} onSave={addPnm} />}
     </>
   );
 }
 
-function PnmFormModal({ onClose, onSave }: { onClose: () => void; onSave: (p: PnmRow) => void }) {
+function PnmFormModal({ onClose, onSave }: { onClose: () => void; onSave: (input: PnmFormInput) => void }) {
   const [fullName, setFullName] = useState('');
   const [standing, setStanding] = useState('Freshman');
   const [major, setMajor] = useState('');
@@ -194,13 +250,7 @@ function PnmFormModal({ onClose, onSave }: { onClose: () => void; onSave: (p: Pn
   const canSave = fullName.trim() !== '';
   const submit = () => {
     if (!canSave) return;
-    onSave({
-      id: `pnm-local-${Date.now()}`,
-      fullName: fullName.trim(), standing, major: major.trim() || 'Undeclared',
-      email: `${fullName.trim().toLowerCase().replace(/[^a-z]+/g, '.')}@stanford.edu`,
-      phone: '', referredBy: referredBy.trim() || null, stage,
-      rating: 0, ratingCount: 0, votesYes: 0, votesNo: 0, eventsAttended: 0,
-    });
+    onSave({ fullName: fullName.trim(), standing, major: major.trim(), referredBy: referredBy.trim() || null, stage });
   };
 
   return (
@@ -226,7 +276,7 @@ function PnmFormModal({ onClose, onSave }: { onClose: () => void; onSave: (p: Pn
 
 /* ─────────────────────────── Member: brother ─────────────────────────── */
 
-function MemberRecruitment({ pnms }: { pnms: PnmRow[] }) {
+function MemberRecruitment({ pnms, live = false, notesByPnm = {}, myRatings = {}, myVotes = {} }: { pnms: PnmRow[] } & LiveProps) {
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rows = filter === 'all' ? pnms : pnms.filter((p) => p.stage === filter);
@@ -268,27 +318,64 @@ function MemberRecruitment({ pnms }: { pnms: PnmRow[] }) {
         {rows.length === 0 && <div className="pkp-card" style={{ padding: 28, textAlign: 'center', fontSize: 13.5, color: 'var(--ink-500)', gridColumn: '1 / -1' }}>No PNMs in this stage.</div>}
       </div>
 
-      {selected && <PnmDrawer pnm={selected} onClose={() => setSelectedId(null)} />}
+      {selected && (
+        <PnmDrawer pnm={selected} live={live} notesByPnm={notesByPnm} myRatings={myRatings} myVotes={myVotes} onClose={() => setSelectedId(null)} />
+      )}
     </>
   );
 }
 
 /* ─────────────────────────── Shared detail drawer ─────────────────────────── */
 
-function PnmDrawer({ pnm: p, exec, onStage, onClose }: {
+function PnmDrawer({ pnm: p, exec, live = false, notesByPnm = {}, myRatings = {}, myVotes = {}, onStage, onClose }: {
   pnm: PnmRow; exec?: boolean; onStage?: (id: string, stage: PnmStage) => void; onClose: () => void;
-}) {
+} & LiveProps) {
   const { role } = useApp();
-  const [myRating, setMyRating] = useState(0);
-  const [myVote, setMyVote] = useState<'yes' | 'no' | null>(null);
-  const [notes, setNotes] = useState<PnmNote[]>(() => pnmNotes(p.id, p.ratingCount));
+  const router = useRouter();
+  const [myRating, setMyRating] = useState(() => (live ? myRatings[p.id] ?? 0 : 0));
+  useEffect(() => { if (live) setMyRating(myRatings[p.id] ?? 0); }, [live, myRatings, p.id]);
+  const [myVote, setMyVote] = useState<'yes' | 'no' | null>(() => (live ? myVotes[p.id] ?? null : null));
+  useEffect(() => { if (live) setMyVote(myVotes[p.id] ?? null); }, [live, myVotes, p.id]);
+  const [notes, setNotes] = useState<PnmNote[]>(() => (live ? notesByPnm[p.id] ?? [] : pnmNotes(p.id, p.ratingCount)));
+  useEffect(() => { if (live) setNotes(notesByPnm[p.id] ?? []); }, [live, notesByPnm, p.id]);
   const [draft, setDraft] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
 
-  const addNote = () => {
-    if (!draft.trim()) return;
-    setNotes((prev) => [{ id: `note-new-${Date.now()}`, author: MOCK_USER[role].name, text: draft.trim(), when: NOW.toISOString() }, ...prev]);
-    setDraft('');
+  const rate = (n: number) => {
+    setMyRating(n);
+    if (live) ratePnm(p.id, n).then(() => router.refresh()).catch((err: any) => alert(err?.message ?? 'Could not save rating.'));
   };
+
+  const castVote = (v: 'yes' | 'no') => {
+    const next = myVote === v ? null : v;
+    setMyVote(next);
+    if (live) votePnm(p.id, next).then(() => router.refresh()).catch((err: any) => alert(err?.message ?? 'Could not save vote.'));
+  };
+
+  const addNote = async () => {
+    if (!draft.trim()) return;
+    if (!live) {
+      setNotes((prev) => [{ id: `note-new-${Date.now()}`, author: MOCK_USER[role].name, text: draft.trim(), when: NOW.toISOString() }, ...prev]);
+      setDraft('');
+      return;
+    }
+    setNoteBusy(true);
+    try {
+      await addPnmNote(p.id, draft.trim());
+      router.refresh();
+      setDraft('');
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not add note.');
+    } finally {
+      setNoteBusy(false);
+    }
+  };
+
+  // In live mode p.votesYes/votesNo already reflect the DB (including this
+  // user's vote after a refresh) — the mock path overlays myVote locally
+  // since p never updates there.
+  const votesYes = live ? p.votesYes : p.votesYes + (myVote === 'yes' ? 1 : 0);
+  const votesNo = live ? p.votesNo : p.votesNo + (myVote === 'no' ? 1 : 0);
 
   const inVoting = p.stage === 'voting' || p.stage === 'bid';
   const next = nextStage(p.stage);
@@ -327,7 +414,7 @@ function PnmDrawer({ pnm: p, exec, onStage, onClose }: {
 
           <div className="pkp-card" style={{ padding: 16 }}>
             <div className="pkp-col-head" style={{ marginBottom: 12 }}>Your rating</div>
-            <StarInput value={myRating} onChange={setMyRating} />
+            <StarInput value={myRating} onChange={rate} />
             <div style={{ fontSize: 11.5, color: 'var(--ink-400)', marginTop: 8 }}>{myRating ? `You rated ${myRating}/5 — counts toward the chapter average.` : 'Tap to rate this PNM.'}</div>
           </div>
 
@@ -335,17 +422,17 @@ function PnmDrawer({ pnm: p, exec, onStage, onClose }: {
             <div className="pkp-card" style={{ padding: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <div className="pkp-col-head">Chapter vote</div>
-                <span className="pkp-mono" style={{ fontSize: 12.5, color: 'var(--ink-600)' }}>{p.votesYes}–{p.votesNo}</span>
+                <span className="pkp-mono" style={{ fontSize: 12.5, color: 'var(--ink-600)' }}>{votesYes}–{votesNo}</span>
               </div>
-              <VoteBar yes={p.votesYes + (myVote === 'yes' ? 1 : 0)} no={p.votesNo + (myVote === 'no' ? 1 : 0)} />
+              <VoteBar yes={votesYes} no={votesNo} />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--ink-500)', marginTop: 7 }}>
-                <span>{p.votesYes + (myVote === 'yes' ? 1 : 0)} bid</span>
-                <span>{p.votesNo + (myVote === 'no' ? 1 : 0)} pass</span>
+                <span>{votesYes} bid</span>
+                <span>{votesNo} pass</span>
               </div>
               {!exec && (
                 <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                  <button onClick={() => setMyVote(myVote === 'yes' ? null : 'yes')} className={myVote === 'yes' ? 'pkp-btn-primary' : 'pkp-btn-ghost'} style={{ flex: 1, height: 38, fontSize: 13 }}>Bid</button>
-                  <button onClick={() => setMyVote(myVote === 'no' ? null : 'no')} className={myVote === 'no' ? 'pkp-btn-primary' : 'pkp-btn-ghost'} style={{ flex: 1, height: 38, fontSize: 13 }}>Pass</button>
+                  <button onClick={() => castVote('yes')} className={myVote === 'yes' ? 'pkp-btn-primary' : 'pkp-btn-ghost'} style={{ flex: 1, height: 38, fontSize: 13 }}>Bid</button>
+                  <button onClick={() => castVote('no')} className={myVote === 'no' ? 'pkp-btn-primary' : 'pkp-btn-ghost'} style={{ flex: 1, height: 38, fontSize: 13 }}>Pass</button>
                 </div>
               )}
             </div>
@@ -356,9 +443,9 @@ function PnmDrawer({ pnm: p, exec, onStage, onClose }: {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <textarea value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Add a note about this PNM…"
                 style={{ width: '100%', minHeight: 56, resize: 'vertical', border: '1px solid var(--cream-400)', borderRadius: 'var(--radius-md)', background: 'var(--white)', padding: '9px 11px', fontSize: 13, color: 'var(--ink-800)', fontFamily: 'var(--font-sans)', outline: 'none' }} />
-              <button className="pkp-btn-primary" disabled={!draft.trim()} onClick={addNote}
-                style={{ alignSelf: 'flex-start', height: 34, padding: '0 16px', fontSize: 12.5, opacity: draft.trim() ? 1 : 0.5, cursor: draft.trim() ? 'pointer' : 'not-allowed' }}>
-                Add note
+              <button className="pkp-btn-primary" disabled={!draft.trim() || noteBusy} onClick={addNote}
+                style={{ alignSelf: 'flex-start', height: 34, padding: '0 16px', fontSize: 12.5, opacity: draft.trim() && !noteBusy ? 1 : 0.5, cursor: draft.trim() && !noteBusy ? 'pointer' : 'not-allowed' }}>
+                {noteBusy ? 'Adding…' : 'Add note'}
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', marginTop: 6 }}>

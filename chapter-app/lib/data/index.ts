@@ -1,7 +1,7 @@
 // The single data-access surface the UI talks to. Swaps between the mock seed
 // and live Supabase based on whether env vars are set — components never know.
 import type {
-  MemberRow, ChapterStats, EventRow, MeetingRow, AttendanceRecord, AnnouncementRow, PnmRow,
+  MemberRow, ChapterStats, EventRow, MeetingRow, AttendanceRecord, AttendanceState, AnnouncementRow, PnmRow, PnmNote,
   PointItem, PointEntry, DriveItem, RsvpState,
 } from '../types';
 import { isSupabaseConfigured, getServerSupabase } from '../supabase/server';
@@ -189,35 +189,213 @@ export async function getMyMembershipId(): Promise<string | null> {
 }
 
 export async function getMeetings(): Promise<MeetingRow[]> {
-  return mockMeetings;
+  if (!isSupabaseConfigured) return mockMeetings;
+  const sb = getServerSupabase();
+  const { data, error } = await sb.from('meetings').select('id, title, held_on').eq('chapter_id', CHAPTER_ID).order('held_on');
+  if (error) throw error;
+  return (data ?? []).map((r: any): MeetingRow => ({ id: r.id, title: r.title, date: r.held_on }));
 }
 
 export async function getAttendance(): Promise<AttendanceRecord[]> {
-  return mockAttendance;
+  if (!isSupabaseConfigured) return mockAttendance;
+  const sb = getServerSupabase();
+  const [{ data: meetings, error: e1 }, { data: memberships, error: e2 }] = await Promise.all([
+    sb.from('meetings').select('id').eq('chapter_id', CHAPTER_ID).order('held_on'),
+    sb.from('memberships').select('id').eq('chapter_id', CHAPTER_ID),
+  ]);
+  if (e1 || e2) throw (e1 || e2);
+  const meetingIds = (meetings ?? []).map((m: any) => m.id as string);
+  if (meetingIds.length === 0) return (memberships ?? []).map((m: any): AttendanceRecord => ({ membershipId: m.id, states: [] }));
+
+  const { data: att, error: e3 } = await sb.from('attendance').select('membership_id, meeting_id, state').in('meeting_id', meetingIds);
+  if (e3) throw e3;
+
+  const byMember = new Map<string, Map<string, AttendanceState>>();
+  for (const row of att ?? []) {
+    if (!byMember.has(row.membership_id)) byMember.set(row.membership_id, new Map());
+    byMember.get(row.membership_id)!.set(row.meeting_id, row.state);
+  }
+
+  return (memberships ?? []).map((m: any): AttendanceRecord => ({
+    membershipId: m.id,
+    states: meetingIds.map((mid) => byMember.get(m.id)?.get(mid) ?? 'absent'),
+  }));
+}
+
+// Per-event check-in state, keyed by event id then membership id — for the
+// EventDrawer's check-in list to show what was already saved (live mode
+// backs check-in with a meeting row linked via meetings.event_id).
+export async function getEventCheckins(): Promise<Record<string, Record<string, AttendanceState>>> {
+  if (!isSupabaseConfigured) return {};
+  const sb = getServerSupabase();
+  const { data: meetings, error: e1 } = await sb
+    .from('meetings').select('id, event_id').eq('chapter_id', CHAPTER_ID).not('event_id', 'is', null);
+  if (e1) throw e1;
+  const eventIdByMeeting = new Map((meetings ?? []).map((m: any) => [m.id, m.event_id as string]));
+  const meetingIds = [...eventIdByMeeting.keys()];
+  if (meetingIds.length === 0) return {};
+
+  const { data: att, error: e2 } = await sb.from('attendance').select('meeting_id, membership_id, state').in('meeting_id', meetingIds);
+  if (e2) throw e2;
+
+  const out: Record<string, Record<string, AttendanceState>> = {};
+  for (const row of att ?? []) {
+    const eventId = eventIdByMeeting.get(row.meeting_id);
+    if (!eventId) continue;
+    (out[eventId] ??= {})[row.membership_id] = row.state;
+  }
+  return out;
 }
 
 export async function getAnnouncements(): Promise<AnnouncementRow[]> {
-  return mockAnnouncements;
+  if (!isSupabaseConfigured) return mockAnnouncements;
+  const sb = getServerSupabase();
+  // RLS (ann_read) already restricts officers-only rows to exec — no further
+  // filtering needed here, unlike the mock path which filters client-side.
+  const { data, error } = await sb
+    .from('announcements')
+    .select('id, title, body, pinned, audience, category, created_at, memberships(position, access_role, profiles(full_name))')
+    .eq('chapter_id', CHAPTER_ID)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r: any): AnnouncementRow => {
+    const mem = r.memberships;
+    return {
+      id: r.id,
+      title: r.title,
+      body: r.body,
+      author: mem?.profiles?.full_name ?? 'Chapter',
+      authorRole: mem?.position ?? (mem?.access_role === 'admin' ? 'Admin' : mem?.access_role === 'exec' ? 'Officer' : 'Brother'),
+      createdAt: r.created_at,
+      audience: r.audience,
+      pinned: r.pinned,
+      category: r.category,
+    };
+  });
 }
 
-// TODO(live): pnms + pnm_ratings/pnm_votes/pnm_notes tables + RLS still pending.
-// Serve the mock seed until that schema lands; signatures are the screen contract.
+// rating/vote counts + averages are DERIVED from pnm_ratings/pnm_votes at read
+// time — never stored, same rule as the rest of the schema.
 export async function getPnms(): Promise<PnmRow[]> {
-  return mockPnms;
+  if (!isSupabaseConfigured) return mockPnms;
+  const sb = getServerSupabase();
+  const [{ data: pnms, error: e1 }, { data: ratings, error: e2 }, { data: votes, error: e3 }] = await Promise.all([
+    sb.from('pnms').select('*').eq('chapter_id', CHAPTER_ID).order('created_at', { ascending: false }),
+    sb.from('pnm_ratings').select('pnm_id, rating'),
+    sb.from('pnm_votes').select('pnm_id, vote'),
+  ]);
+  if (e1 || e2 || e3) throw (e1 || e2 || e3);
+
+  const ratingsByPnm = new Map<string, number[]>();
+  for (const r of ratings ?? []) {
+    const arr = ratingsByPnm.get(r.pnm_id) ?? [];
+    arr.push(r.rating);
+    ratingsByPnm.set(r.pnm_id, arr);
+  }
+  const votesByPnm = new Map<string, { yes: number; no: number }>();
+  for (const v of votes ?? []) {
+    const cur = votesByPnm.get(v.pnm_id) ?? { yes: 0, no: 0 };
+    if (v.vote === 'yes') cur.yes++; else cur.no++;
+    votesByPnm.set(v.pnm_id, cur);
+  }
+
+  return (pnms ?? []).map((p: any): PnmRow => {
+    const rs = ratingsByPnm.get(p.id) ?? [];
+    const vt = votesByPnm.get(p.id) ?? { yes: 0, no: 0 };
+    return {
+      id: p.id,
+      fullName: p.full_name,
+      standing: p.standing ?? '',
+      major: p.major ?? '',
+      email: p.email ?? '',
+      phone: p.phone ?? '',
+      referredBy: p.referred_by,
+      stage: p.stage,
+      rating: rs.length ? Math.round((rs.reduce((a, b) => a + b, 0) / rs.length) * 10) / 10 : 0,
+      ratingCount: rs.length,
+      votesYes: vt.yes,
+      votesNo: vt.no,
+      eventsAttended: p.events_attended,
+    };
+  });
 }
 
 export async function getPnm(id: string): Promise<PnmRow | null> {
-  return mockPnms.find((p) => p.id === id) ?? null;
+  if (!isSupabaseConfigured) return mockPnms.find((p) => p.id === id) ?? null;
+  const all = await getPnms();
+  return all.find((p) => p.id === id) ?? null;
 }
 
-// TODO(live): point_items (catalog) + point_entries (log) tables + RLS. Read =
-// chapter member; write (log an entry) = exec/recruitment-or-standards approver.
+// Note thread per PNM, keyed by pnm id. Empty in mock mode — RecruitmentScreen
+// derives deterministic demo notes there instead (lib/recruitment.ts pnmNotes).
+export async function getPnmNotes(): Promise<Record<string, PnmNote[]>> {
+  if (!isSupabaseConfigured) return {};
+  const sb = getServerSupabase();
+  const { data, error } = await sb
+    .from('pnm_notes')
+    .select('id, pnm_id, body, created_at, memberships(profiles(full_name))')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  const out: Record<string, PnmNote[]> = {};
+  for (const r of (data ?? []) as any[]) {
+    (out[r.pnm_id] ??= []).push({
+      id: r.id,
+      author: r.memberships?.profiles?.full_name ?? 'Brother',
+      text: r.body,
+      when: r.created_at,
+    });
+  }
+  return out;
+}
+
+// The signed-in member's own rating/vote per PNM, so the drawer shows what
+// they already submitted instead of resetting to blank on every visit.
+export async function getMyPnmChoices(): Promise<{ ratings: Record<string, number>; votes: Record<string, 'yes' | 'no'> }> {
+  const empty = { ratings: {}, votes: {} };
+  if (!isSupabaseConfigured) return empty;
+  const membershipId = await getMyMembershipId();
+  if (!membershipId) return empty;
+  const sb = getServerSupabase();
+  const [{ data: ratings }, { data: votes }] = await Promise.all([
+    sb.from('pnm_ratings').select('pnm_id, rating').eq('membership_id', membershipId),
+    sb.from('pnm_votes').select('pnm_id, vote').eq('membership_id', membershipId),
+  ]);
+  return {
+    ratings: Object.fromEntries((ratings ?? []).map((r: any) => [r.pnm_id, r.rating])),
+    votes: Object.fromEntries((votes ?? []).map((v: any) => [v.pnm_id, v.vote])),
+  };
+}
+
 export async function getPointItems(): Promise<PointItem[]> {
-  return mockPointItems;
+  if (!isSupabaseConfigured) return mockPointItems;
+  const sb = getServerSupabase();
+  const { data, error } = await sb
+    .from('point_items').select('id, label, points, kind, discretionary')
+    .eq('chapter_id', CHAPTER_ID).order('sort_order');
+  if (error) throw error;
+  return (data ?? []).map((r: any): PointItem => ({
+    id: r.id, label: r.label, points: r.points, kind: r.kind, discretionary: r.discretionary,
+  }));
 }
 
 export async function getPointEntries(): Promise<PointEntry[]> {
-  return mockPointEntries;
+  if (!isSupabaseConfigured) return mockPointEntries;
+  const sb = getServerSupabase();
+  const { data, error } = await sb
+    .from('points_entries')
+    .select('id, membership_id, item_id, points, approved_by, created_at, point_items(label), memberships!inner(chapter_id)')
+    .eq('memberships.chapter_id', CHAPTER_ID)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r: any): PointEntry => ({
+    id: r.id,
+    membershipId: r.membership_id,
+    itemId: r.item_id,
+    label: r.point_items?.label ?? '(deleted item)',
+    points: r.points,
+    date: r.created_at,
+    approvedBy: r.approved_by ?? '',
+  }));
 }
 
 // TODO(live): a `files` table (metadata) + a Supabase Storage bucket (bytes).

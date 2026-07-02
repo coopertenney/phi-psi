@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EventRow, EventType, MemberRow, RsvpState } from '@/lib/types';
+import type { EventRow, EventType, MemberRow, RsvpState, AttendanceState } from '@/lib/types';
 import type { EventRsvp } from '@/lib/data';
 import { fmtWeekday, fmtTime, relativeDay, type BadgeTone } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { currentMember } from '@/lib/session';
-import { createEvent, updateEvent, deleteEvent, setRsvp, type EventInput } from '@/app/events/actions';
+import { createEvent, updateEvent, deleteEvent, setRsvp, setAttendance, type EventInput } from '@/app/events/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 import { icons } from './icons';
@@ -84,9 +84,10 @@ type Props = {
   rsvps: EventRsvp[];
   myMembershipId: string | null;
   live: boolean;
+  checkins: Record<string, Record<string, AttendanceState>>;
 };
 
-export function EventsScreen({ events, members, rsvps, myMembershipId, live }: Props) {
+export function EventsScreen({ events, members, rsvps, myMembershipId, live, checkins }: Props) {
   const { role, persona } = useApp();
   const rsvpIndex = useMemo(() => buildIndex(rsvps), [rsvps]);
 
@@ -96,7 +97,7 @@ export function EventsScreen({ events, members, rsvps, myMembershipId, live }: P
       ? <MemberEvents events={events} me={me} rsvpIndex={rsvpIndex} live={live} />
       : <p style={{ color: 'var(--ink-500)' }}>Your member profile isn’t loaded yet.</p>;
   }
-  return <ExecEvents events={events} members={members} rsvpIndex={rsvpIndex} live={live} />;
+  return <ExecEvents events={events} members={members} rsvpIndex={rsvpIndex} live={live} checkins={checkins} />;
 }
 
 /* ─────────────────────────── Exec view ─────────────────────────── */
@@ -109,8 +110,9 @@ const CHIPS = [
 ] as const;
 type Filter = (typeof CHIPS)[number]['id'];
 
-function ExecEvents({ events, members, rsvpIndex, live }: {
+function ExecEvents({ events, members, rsvpIndex, live, checkins }: {
   events: EventRow[]; members: MemberRow[]; rsvpIndex: RsvpIndex; live: boolean;
+  checkins: Record<string, Record<string, AttendanceState>>;
 }) {
   const router = useRouter();
   const [list, setList] = useState<EventRow[]>(events);
@@ -235,6 +237,8 @@ function ExecEvents({ events, members, rsvpIndex, live }: {
           event={selected}
           members={members}
           eventRsvps={rsvpIndex.get(selected.id) ?? new Map()}
+          live={live}
+          initialCheckin={checkins[selected.id] ?? {}}
           onClose={() => setSelectedId(null)}
           onEdit={() => setForm(selected)}
         />
@@ -316,17 +320,21 @@ function EventFormModal({ base, busy, onClose, onSave, onDelete }: {
   );
 }
 
-function EventDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
-  event: EventRow; members: MemberRow[]; eventRsvps: Map<string, RsvpState>; onClose: () => void; onEdit: () => void;
+function EventDrawer({ event: e, members, eventRsvps, live, initialCheckin, onClose, onEdit }: {
+  event: EventRow; members: MemberRow[]; eventRsvps: Map<string, RsvpState>; live: boolean;
+  initialCheckin: Record<string, AttendanceState>; onClose: () => void; onEdit: () => void;
 }) {
   const tm = typeMeta(e.type);
   const past = isPast(e);
   const roster = useMemo(() => members.filter((m) => m.status !== 'inactive'), [members]);
 
-  // Live check-in is ephemeral for now (attendance persistence is the next
-  // vertical) — starts empty rather than showing fabricated data.
-  const [present, setPresent] = useState<Record<string, boolean>>({});
-  const toggle = (id: string) => setPresent((p) => ({ ...p, [id]: !p[id] }));
+  const [present, setPresent] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(Object.entries(initialCheckin).map(([id, s]) => [id, s === 'present'])));
+  const toggle = (id: string) => {
+    const next = !present[id];
+    setPresent((p) => ({ ...p, [id]: next }));
+    if (live) setAttendance(e.id, id, next).catch((err: any) => alert(err?.message ?? 'Could not save check-in.'));
+  };
 
   const goingCount = roster.filter((m) => eventRsvps.get(m.membershipId) === 'going').length;
   const presentCount = roster.filter((m) => present[m.membershipId]).length;
@@ -409,9 +417,11 @@ function EventDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
                 );
               })}
             </div>
-            <div style={{ fontSize: 11.5, color: 'var(--ink-400)', marginTop: 10 }}>
-              Check-in is not saved yet — attendance persistence is the next step.
-            </div>
+            {!live && (
+              <div style={{ fontSize: 11.5, color: 'var(--ink-400)', marginTop: 10 }}>
+                Check-in is not saved yet — mock mode only.
+              </div>
+            )}
           </div>
         </div>
 

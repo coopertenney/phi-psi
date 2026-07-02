@@ -1,11 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { MemberRow, PointEntry, PointItem } from '@/lib/types';
 import { relativeDay } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { entriesFor, weekChange, rewardPunishmentSplit, memberPointTotal, POINT_FLOOR } from '@/lib/points';
 import { currentMember } from '@/lib/session';
+import { logPoints } from '@/app/points/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 import { icons } from './icons';
@@ -14,11 +16,12 @@ import { Modal, Field, Select } from './form';
 const ptColor = (n: number) => (n > 0 ? 'var(--success-600)' : n < 0 ? 'var(--pkp-primary)' : 'var(--ink-500)');
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
-type Props = { members: MemberRow[]; entries: PointEntry[]; items: PointItem[] };
+type Props = { members: MemberRow[]; entries: PointEntry[]; items: PointItem[]; live?: boolean };
 
-export function PointsScreen(props: Props) {
+export function PointsScreen({ live = false, ...props }: Props) {
   const { role, persona } = useApp();
   const [entries, setEntries] = useState<PointEntry[]>(props.entries);
+  useEffect(() => setEntries(props.entries), [props.entries]); // follow server refreshes
   const onLog = (e: PointEntry) => setEntries((x) => [e, ...x]);
 
   if (role === 'member') {
@@ -27,7 +30,7 @@ export function PointsScreen(props: Props) {
       ? <MemberPoints me={me} members={props.members} entries={entries} items={props.items} />
       : <p style={{ color: 'var(--ink-500)' }}>No record on file.</p>;
   }
-  return <ExecPoints members={props.members} entries={entries} items={props.items} onLog={onLog} />;
+  return <ExecPoints members={props.members} entries={entries} items={props.items} onLog={onLog} live={live} />;
 }
 
 /* ─────────────────────────── Shared: catalog drawer ─────────────────────────── */
@@ -73,7 +76,7 @@ function PointValuesDrawer({ items, onClose }: { items: PointItem[]; onClose: ()
 
 /* ─────────────────────────── Exec: leaderboard + log ─────────────────────────── */
 
-function ExecPoints({ members, entries, items, onLog }: Props & { onLog: (e: PointEntry) => void }) {
+function ExecPoints({ members, entries, items, onLog, live = false }: Props & { onLog: (e: PointEntry) => void }) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [logging, setLogging] = useState(false);
 
@@ -125,29 +128,50 @@ function ExecPoints({ members, entries, items, onLog }: Props & { onLog: (e: Poi
       </div>
 
       {catalogOpen && <PointValuesDrawer items={items} onClose={() => setCatalogOpen(false)} />}
-      {logging && <LogPointsModal members={members} items={items} onClose={() => setLogging(false)} onLog={(e) => { onLog(e); setLogging(false); }} />}
+      {logging && (
+        <LogPointsModal
+          members={members} items={items} live={live}
+          onClose={() => setLogging(false)}
+          onLog={(e) => { onLog(e); setLogging(false); }}
+        />
+      )}
     </>
   );
 }
 
-function LogPointsModal({ members, items, onClose, onLog }: {
-  members: MemberRow[]; items: PointItem[]; onClose: () => void; onLog: (e: PointEntry) => void;
+function LogPointsModal({ members, items, live, onClose, onLog }: {
+  members: MemberRow[]; items: PointItem[]; live: boolean; onClose: () => void; onLog: (e: PointEntry) => void;
 }) {
+  const router = useRouter();
   const [memberId, setMemberId] = useState(members[0]?.membershipId ?? '');
   const [itemId, setItemId] = useState(items[0]?.id ?? '');
   const [approvedBy, setApprovedBy] = useState('');
   const [customPts, setCustomPts] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const item = items.find((it) => it.id === itemId);
   const points = item?.discretionary ? Number(customPts) || 0 : item?.points ?? 0;
   const canSave = !!memberId && !!item && approvedBy.trim() !== '' && (!item.discretionary || customPts !== '');
 
-  const submit = () => {
+  const submit = async () => {
     if (!canSave || !item) return;
-    onLog({
-      id: `pe-local-${Date.now()}`, membershipId: memberId, itemId: item.id, label: item.label,
-      points, date: NOW.toISOString(), approvedBy: approvedBy.trim(),
-    });
+    if (!live) {
+      onLog({
+        id: `pe-local-${Date.now()}`, membershipId: memberId, itemId: item.id, label: item.label,
+        points, date: NOW.toISOString(), approvedBy: approvedBy.trim(),
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      await logPoints(memberId, item.id, points, approvedBy.trim());
+      router.refresh();
+      onClose();
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not log points.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const opts = items.map((it) => ({
@@ -159,8 +183,8 @@ function LogPointsModal({ members, items, onClose, onLog }: {
     <Modal title="Log points" sub="Award or deduct against the catalog" onClose={onClose} width={500}
       footer={<>
         <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave} onClick={submit}>
-          Log {signed(points)}
+        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave && !busy ? 1 : 0.5, cursor: canSave && !busy ? 'pointer' : 'not-allowed' }} disabled={!canSave || busy} onClick={submit}>
+          {busy ? 'Logging…' : `Log ${signed(points)}`}
         </button>
       </>}>
       <Select label="Brother" value={memberId} onChange={(e) => setMemberId(e.target.value)}

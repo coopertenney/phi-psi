@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { AnnouncementRow, AnnouncementCategory, AnnouncementAudience } from '@/lib/types';
 import { relativeDay, type BadgeTone } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { MOCK_USER } from '@/lib/session';
+import { postAnnouncement } from '@/app/announcements/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 
@@ -24,9 +26,10 @@ const Pin = (
 const sortFeed = (a: AnnouncementRow, b: AnnouncementRow): number =>
   Number(b.pinned) - Number(a.pinned) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 
-export function AnnouncementsScreen({ announcements }: { announcements: AnnouncementRow[] }) {
+export function AnnouncementsScreen({ announcements, live = false }: { announcements: AnnouncementRow[]; live?: boolean }) {
   const { role } = useApp();
   const [posts, setPosts] = useState<AnnouncementRow[]>(announcements);
+  useEffect(() => setPosts(announcements), [announcements]); // follow server refreshes
 
   const visible = useMemo(
     () => posts.filter((p) => (role === 'exec' ? true : p.audience === 'all')).sort(sortFeed),
@@ -37,7 +40,7 @@ export function AnnouncementsScreen({ announcements }: { announcements: Announce
 
   return (
     <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {role === 'exec' && <Compose onPost={onPost} />}
+      {role === 'exec' && <Compose onPost={onPost} live={live} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {visible.map((a) => <Card key={a.id} a={a} />)}
       </div>
@@ -72,32 +75,51 @@ function Card({ a }: { a: AnnouncementRow }) {
   );
 }
 
-function Compose({ onPost }: { onPost: (a: AnnouncementRow) => void }) {
+function Compose({ onPost, live }: { onPost: (a: AnnouncementRow) => void; live: boolean }) {
+  const router = useRouter();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [audience, setAudience] = useState<AnnouncementAudience>('all');
   const [category, setCategory] = useState<AnnouncementCategory>('general');
+  const [busy, setBusy] = useState(false);
 
   const author = MOCK_USER.exec;
   const canPost = title.trim().length > 0 && body.trim().length > 0;
 
-  const submit = () => {
-    if (!canPost) return;
-    onPost({
-      id: `ann-new-${Date.now()}`,
-      title: title.trim(),
-      body: body.trim(),
-      author: author.name,
-      authorRole: author.title,
-      createdAt: NOW.toISOString(),
-      audience,
-      pinned: false,
-      category,
-    });
+  const reset = () => {
     setTitle('');
     setBody('');
     setAudience('all');
     setCategory('general');
+  };
+
+  const submit = async () => {
+    if (!canPost) return;
+    if (!live) {
+      onPost({
+        id: `ann-new-${Date.now()}`,
+        title: title.trim(),
+        body: body.trim(),
+        author: author.name,
+        authorRole: author.title,
+        createdAt: NOW.toISOString(),
+        audience,
+        pinned: false,
+        category,
+      });
+      reset();
+      return;
+    }
+    setBusy(true);
+    try {
+      await postAnnouncement({ title: title.trim(), body: body.trim(), audience, category });
+      router.refresh();
+      reset();
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not post the announcement.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const field: React.CSSProperties = {
@@ -120,9 +142,9 @@ function Compose({ onPost }: { onPost: (a: AnnouncementRow) => void }) {
             <button className={audience === 'all' ? 'on' : ''} onClick={() => setAudience('all')}>All</button>
             <button className={audience === 'officers' ? 'on' : ''} onClick={() => setAudience('officers')}>Officers</button>
           </div>
-          <button className="pkp-btn-primary" disabled={!canPost} onClick={submit}
-            style={{ marginLeft: 'auto', height: 38, padding: '0 20px', fontSize: 13.5, opacity: canPost ? 1 : 0.5, cursor: canPost ? 'pointer' : 'not-allowed' }}>
-            Post
+          <button className="pkp-btn-primary" disabled={!canPost || busy} onClick={submit}
+            style={{ marginLeft: 'auto', height: 38, padding: '0 20px', fontSize: 13.5, opacity: canPost && !busy ? 1 : 0.5, cursor: canPost && !busy ? 'pointer' : 'not-allowed' }}>
+            {busy ? 'Posting…' : 'Post'}
           </button>
         </div>
       </div>

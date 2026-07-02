@@ -70,3 +70,42 @@ export async function setRsvp(eventId: string, status: 'going' | 'maybe' | 'no' 
     .upsert({ event_id: eventId, membership_id: mem.id, status: dbStatus }, { onConflict: 'event_id,membership_id' });
   if (error) throw new Error(error.message);
 }
+
+// Exec live check-in. Backs each event with a `meetings` row (find-or-create,
+// linked via meetings.event_id) so attendance rolls into the same table the
+// Attendance screen reads — one fact table, two views onto it.
+export async function setAttendance(eventId: string, membershipId: string, present: boolean) {
+  const sb = getServerSupabase();
+
+  const { data: ev, error: eErr } = await sb.from('events').select('name, starts_at, chapter_id').eq('id', eventId).maybeSingle();
+  if (eErr) throw new Error(eErr.message);
+  if (!ev) throw new Error('Event not found');
+
+  const { data: existing } = await sb.from('meetings').select('id').eq('event_id', eventId).maybeSingle();
+  let meetingId = existing?.id as string | undefined;
+  if (!meetingId) {
+    const { data: created, error: mErr } = await sb
+      .from('meetings')
+      .insert({ chapter_id: ev.chapter_id, event_id: eventId, title: ev.name, held_on: String(ev.starts_at).slice(0, 10) })
+      .select('id')
+      .single();
+    if (mErr) {
+      // Unique violation (23505) means another concurrent check-in already
+      // created the meeting for this event — fetch it instead of failing.
+      if (mErr.code !== '23505') throw new Error(mErr.message);
+      const { data: raced } = await sb.from('meetings').select('id').eq('event_id', eventId).maybeSingle();
+      if (!raced) throw new Error(mErr.message);
+      meetingId = raced.id;
+    } else {
+      meetingId = created.id;
+    }
+  }
+
+  const { error } = await sb
+    .from('attendance')
+    .upsert(
+      { meeting_id: meetingId, membership_id: membershipId, state: present ? 'present' : 'absent' },
+      { onConflict: 'meeting_id,membership_id' },
+    );
+  if (error) throw new Error(error.message);
+}
