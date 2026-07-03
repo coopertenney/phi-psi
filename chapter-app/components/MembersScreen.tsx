@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemberRow, MemberStatus, FlagSeverity } from '@/lib/types';
 import { money, statusBadge, duesBadge, type BadgeTone } from '@/lib/format';
-import { Avatar, Badge, Chips, AddButton, Drawer } from './ui';
+import { Badge, Chips, AddButton, Drawer } from './ui';
+import { MemberAvatar } from './MemberAvatar';
 import { icons } from './icons';
 import { Modal, ModalActions, Field, Select, FieldRow, TextArea, parseCsv, downloadCsv } from './form';
 import { useApp } from './Providers';
@@ -95,7 +96,7 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
           return (
             <div key={m.membershipId} className="pkp-row" onClick={() => setSelectedId(m.membershipId)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                <Avatar name={m.fullName} size={36} />
+                <MemberAvatar name={m.fullName} src={m.avatarUrl} size={36} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</span>
@@ -144,7 +145,7 @@ function MemberDrawer({ member: m, onClose, onEdit }: { member: MemberRow; onClo
     <Drawer
       onClose={onClose}
       header={<>
-        <Avatar name={m.fullName} size={58} fontSize={20} />
+        <MemberAvatar name={m.fullName} src={m.avatarUrl} size={58} fontSize={20} />
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</h2>
           <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · Class of {m.classYear}</div>
@@ -238,7 +239,7 @@ function MemberFormModal({ base, onClose, onSave }: { base?: MemberRow; onClose:
     const built: MemberRow = base
       ? { ...base, fullName: fullName.trim(), email: email.trim(), phone: phone.trim(), position: pos, committee: committee.trim() || base.committee, classYear: Number(classYear) || base.classYear, status, roleLabel: roleLabelFor(pos, status) }
       : {
-          membershipId: `local-${Date.now()}`, fullName: fullName.trim(), email: email.trim(), phone: phone.trim(),
+          membershipId: `local-${Date.now()}`, fullName: fullName.trim(), avatarUrl: null, email: email.trim(), phone: phone.trim(),
           position: pos, roleLabel: roleLabelFor(pos, status), status, classYear: Number(classYear) || null,
           committee: committee.trim() || 'Unassigned', bigName: null, littleNames: [], points: 0,
           attendancePct: 100, balanceCents: 0, chargedCents: 0, paidCents: 0, duesState: 'paid', flags: [],
@@ -309,7 +310,7 @@ function parseClass(text: string): { members: MemberRow[]; skipped: number } {
     const pos = f.position.trim() || null;
     members.push({
       membershipId: `local-${Date.now()}-${idx}`,
-      fullName: f.name.trim(), email: f.email.trim(), phone: f.phone.trim(),
+      fullName: f.name.trim(), avatarUrl: null, email: f.email.trim(), phone: f.phone.trim(),
       position: pos, roleLabel: roleLabelFor(pos, 'new'), status: 'new',
       classYear: cy ? Number(cy) : null, committee: f.committee.trim() || 'Unassigned',
       bigName: null, littleNames: [], points: 0, attendancePct: 100,

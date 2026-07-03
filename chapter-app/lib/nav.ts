@@ -38,6 +38,7 @@ export const NAV_TABS: { href: string; id: string; label: string; locked?: boole
   { href: '/points', id: 'points', label: 'Points' },
   { href: '/announcements', id: 'announcements', label: 'Announcements' },
   { href: '/files', id: 'files', label: 'Files' },
+  { href: '/profile', id: 'profile', label: 'Profile' },
   { href: 'https://docs.google.com/spreadsheets/d/1R2aucgm_uYfEp4Nn2PALGDFpHxnbl6uKvY-5UdNC3LY/edit', id: 'menu', label: 'Menu', external: true },
 ];
 
