@@ -5,7 +5,7 @@ import type { MemberRow, MeetingRow, AttendanceRecord, AttendanceState } from '@
 import { fmtDate } from '@/lib/format';
 import { currentMember } from '@/lib/session';
 import { useApp } from './Providers';
-import { Avatar, Badge } from './ui';
+import { Avatar, Badge, StatCards } from './ui';
 
 const ATT_COLOR: Record<AttendanceState, string> = {
   present: 'var(--success-500)',
@@ -69,15 +69,7 @@ function ExecAttendance({ members, meetings, attendance }: Props) {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        {cards.map((c) => (
-          <div key={c.label} className="pkp-stat">
-            <div className="pkp-stat-val">{c.val}</div>
-            <div className="pkp-stat-label">{c.label}</div>
-            <div className="pkp-stat-sub">{c.sub}</div>
-          </div>
-        ))}
-      </div>
+      <StatCards cards={cards} />
 
       <div className="pkp-card" style={{ padding: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>

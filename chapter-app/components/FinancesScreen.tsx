@@ -13,10 +13,10 @@ import { NOW } from '@/lib/engagement';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
 import { CHAPTER_ID } from '@/lib/chapter';
 import { useApp } from './Providers';
-import { Avatar, Badge } from './ui';
+import { Avatar, Badge, Chips, StatCards } from './ui';
 import { icons } from './icons';
 import { Switch } from './AccessScreen';
-import { Modal, Field, Select, FieldRow, downloadCsv } from './form';
+import { Modal, ModalActions, Field, Select, FieldRow, downloadCsv } from './form';
 
 // Starts a Stripe Checkout session for `kind` ('dues' | 'fines') and redirects
 // there. Server (app/api/stripe/checkout) is the source of truth on whether
@@ -236,22 +236,10 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
     <>
       <PaymentSettingsCard settings={settings} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        {cards.map((c) => (
-          <div key={c.label} className="pkp-stat">
-            <div className="pkp-stat-val">{c.val}</div>
-            <div className="pkp-stat-label">{c.label}</div>
-            <div className="pkp-stat-sub">{c.sub}</div>
-          </div>
-        ))}
-      </div>
+      <StatCards cards={cards} />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div className="pkp-chips">
-          {CHIPS.map((c) => (
-            <button key={c.id} className={`pkp-chip${filter === c.id ? ' on' : ''}`} onClick={() => setFilter(c.id)}>{c.label}</button>
-          ))}
-        </div>
+        <Chips options={CHIPS} value={filter} onChange={setFilter} />
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }}
             onClick={() => downloadCsv('cal-beta-finances.csv',
@@ -332,10 +320,7 @@ function ChargeModal({ members, fixed, onClose, onSave }: {
   };
   return (
     <Modal title={fixed ? 'Add fine' : 'Add charge'} sub={fixed ? fixed.fullName : 'Charge a brother'} onClose={onClose}
-      footer={<>
-        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave} onClick={submit}>{fixed ? 'Add fine' : 'Add charge'}</button>
-      </>}>
+      footer={<ModalActions onCancel={onClose} onSave={submit} canSave={canSave} saveLabel={fixed ? 'Add fine' : 'Add charge'} />}>
       {!fixed && (
         <Select label="Brother" value={memberId} onChange={(e) => setMemberId(e.target.value)}
           options={members.map((m) => ({ value: m.membershipId, label: m.fullName }))} />

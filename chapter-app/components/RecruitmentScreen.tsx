@@ -9,9 +9,9 @@ import { FUNNEL, STAGE_META, nextStage, pnmNotes } from '@/lib/recruitment';
 import { MOCK_USER } from '@/lib/session';
 import { createPnm, setPnmStage, ratePnm, votePnm, addPnmNote, type PnmInput } from '@/app/recruitment/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge } from './ui';
+import { Avatar, Badge, Chips, StatCards } from './ui';
 import { icons } from './icons';
-import { Modal, Field, Select, FieldRow } from './form';
+import { Modal, ModalActions, Field, Select, FieldRow } from './form';
 
 type LiveProps = {
   live?: boolean;
@@ -164,15 +164,7 @@ function ExecRecruitment({ pnms: initial, live = false, notesByPnm = {}, myRatin
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
-        {cards.map((c) => (
-          <div key={c.label} className="pkp-stat">
-            <div className="pkp-stat-val">{c.val}</div>
-            <div className="pkp-stat-label">{c.label}</div>
-            <div className="pkp-stat-sub">{c.sub}</div>
-          </div>
-        ))}
-      </div>
+      <StatCards cards={cards} cols={4} />
 
       <div className="pkp-card" style={{ padding: 20 }}>
         <h3 className="pkp-h3" style={{ marginBottom: 16 }}>Rush funnel</h3>
@@ -193,11 +185,7 @@ function ExecRecruitment({ pnms: initial, live = false, notesByPnm = {}, myRatin
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div className="pkp-chips">
-          {CHIPS.map((c) => (
-            <button key={c.id} className={`pkp-chip${filter === c.id ? ' on' : ''}`} onClick={() => setFilter(c.id)}>{c.label}</button>
-          ))}
-        </div>
+        <Chips options={CHIPS} value={filter} onChange={setFilter} />
         <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 18px', fontSize: 13.5, boxShadow: 'var(--shadow-sm)' }} onClick={() => setAdding(true)}>
           <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Add PNM
         </button>
@@ -255,10 +243,7 @@ function PnmFormModal({ onClose, onSave }: { onClose: () => void; onSave: (input
 
   return (
     <Modal title="Add PNM" sub="New potential new member" onClose={onClose}
-      footer={<>
-        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave} onClick={submit}>Add PNM</button>
-      </>}>
+      footer={<ModalActions onCancel={onClose} onSave={submit} canSave={canSave} saveLabel="Add PNM" />}>
       <Field label="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="First Last" />
       <FieldRow>
         <Select label="Standing" value={standing} onChange={(e) => setStanding(e.target.value)}
@@ -292,11 +277,7 @@ function MemberRecruitment({ pnms, live = false, notesByPnm = {}, myRatings = {}
         </p>
       </div>
 
-      <div className="pkp-chips">
-        {CHIPS.map((c) => (
-          <button key={c.id} className={`pkp-chip${filter === c.id ? ' on' : ''}`} onClick={() => setFilter(c.id)}>{c.label}</button>
-        ))}
-      </div>
+      <Chips options={CHIPS} value={filter} onChange={setFilter} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 16 }}>
         {rows.map((p) => (

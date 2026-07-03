@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemberRow, MemberStatus, FlagSeverity } from '@/lib/types';
 import { money, statusBadge, duesBadge, type BadgeTone } from '@/lib/format';
-import { Avatar, Badge } from './ui';
+import { Avatar, Badge, Chips } from './ui';
 import { icons } from './icons';
-import { Modal, Field, Select, FieldRow, TextArea, parseCsv, downloadCsv } from './form';
+import { Modal, ModalActions, Field, Select, FieldRow, TextArea, parseCsv, downloadCsv } from './form';
 import { useApp } from './Providers';
 import { NOW } from '@/lib/engagement';
 import { graduatingClassYear, upcomingAcademicYear } from '@/lib/calendar';
@@ -72,13 +72,7 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div className="pkp-chips">
-          {CHIPS.map((c) => (
-            <button key={c.id} className={`pkp-chip${filter === c.id ? ' on' : ''}`} onClick={() => setFilter(c.id)}>
-              {c.label}
-            </button>
-          ))}
-        </div>
+        <Chips options={CHIPS} value={filter} onChange={setFilter} />
         <div style={{ display: 'flex', gap: 10 }}>
           {isAdmin && <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={() => setRollingOver(true)}>Start new year</button>}
           <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={() => setImporting(true)}>Import class</button>
@@ -265,12 +259,7 @@ function MemberFormModal({ base, onClose, onSave }: { base?: MemberRow; onClose:
       title={base ? 'Edit profile' : 'Add member'}
       sub={base ? base.fullName : 'New brother or new member'}
       onClose={onClose}
-      footer={<>
-        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave} onClick={submit}>
-          {base ? 'Save changes' : 'Add member'}
-        </button>
-      </>}
+      footer={<ModalActions onCancel={onClose} onSave={submit} canSave={canSave} saveLabel={base ? 'Save changes' : 'Add member'} />}
     >
       <Field label="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="First Last" />
       <FieldRow>
@@ -355,13 +344,8 @@ function ImportClassModal({ onClose, onImport }: { onClose: () => void; onImport
       sub="Add a new-member class from a CSV"
       width={540}
       onClose={onClose}
-      footer={<>
-        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: members.length ? 1 : 0.5, cursor: members.length ? 'pointer' : 'not-allowed' }}
-          disabled={members.length === 0} onClick={() => onImport(members)}>
-          Import {members.length || ''} {members.length === 1 ? 'member' : 'members'}
-        </button>
-      </>}
+      footer={<ModalActions onCancel={onClose} onSave={() => onImport(members)} canSave={members.length > 0}
+        saveLabel={<>Import {members.length || ''} {members.length === 1 ? 'member' : 'members'}</>} />}
     >
       <div style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.5 }}>
         Columns: <strong>Name</strong>, Email, Phone, Class Year, Committee — a header row is optional.
@@ -428,10 +412,7 @@ function NewYearModal({ roster, onClose, onConfirm }: { roster: MemberRow[]; onC
       sub={`Roll the chapter into ${next.label}`}
       width={460}
       onClose={onClose}
-      footer={<>
-        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5 }} onClick={onConfirm}>Roll into {next.label}</button>
-      </>}
+      footer={<ModalActions onCancel={onClose} onSave={onConfirm} saveLabel={<>Roll into {next.label}</>} />}
     >
       <div style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.5 }}>
         Advances the chapter into the <strong>{next.label}</strong> year. New members become active

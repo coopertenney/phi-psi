@@ -11,7 +11,7 @@ import { logPoints, updatePointItem, requestPoints, approvePointEntry, rejectPoi
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 import { icons } from './icons';
-import { Modal, Field, Select } from './form';
+import { Modal, ModalActions, Field, Select } from './form';
 
 const ptColor = (n: number) => (n > 0 ? 'var(--success-600)' : n < 0 ? 'var(--pkp-primary)' : 'var(--ink-500)');
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
@@ -330,12 +330,7 @@ function LogPointsModal({ members, items, live, onClose, onLog }: {
 
   return (
     <Modal title="Log points" sub="Award or deduct against the catalog" onClose={onClose} width={500}
-      footer={<>
-        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave && !busy ? 1 : 0.5, cursor: canSave && !busy ? 'pointer' : 'not-allowed' }} disabled={!canSave || busy} onClick={submit}>
-          {busy ? 'Logging…' : `Log ${signed(points)}`}
-        </button>
-      </>}>
+      footer={<ModalActions onCancel={onClose} onSave={submit} canSave={canSave && !busy} saveLabel={busy ? 'Logging…' : `Log ${signed(points)}`} />}>
       <Select label="Brother" value={memberId} onChange={(e) => setMemberId(e.target.value)}
         options={members.map((m) => ({ value: m.membershipId, label: m.fullName }))} />
       <Select label="Item" value={itemId} onChange={(e) => setItemId(e.target.value)} options={opts} />
@@ -511,12 +506,7 @@ function RequestPointsModal({ me, items, live, onClose, onLog }: {
 
   return (
     <Modal title="Log points" sub="Submit for an officer to approve" onClose={onClose} width={500}
-      footer={<>
-        <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
-        <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: item && !busy ? 1 : 0.5, cursor: item && !busy ? 'pointer' : 'not-allowed' }} disabled={!item || busy} onClick={submit}>
-          {busy ? 'Submitting…' : `Request +${points}`}
-        </button>
-      </>}>
+      footer={<ModalActions onCancel={onClose} onSave={submit} canSave={!!item && !busy} saveLabel={busy ? 'Submitting…' : `Request +${points}`} />}>
       <Select label="What did you do?" value={itemId} onChange={(e) => setItemId(e.target.value)} options={opts} />
       <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 6 }}>
         Worth <strong style={{ color: 'var(--success-600)' }}>+{points}</strong> once an officer approves it — it won’t count toward your total until then.

@@ -45,6 +45,21 @@ export function Modal({ title, sub, onClose, children, footer, width = 460 }: {
   );
 }
 
+// The Cancel / primary-action pair used in every modal's `footer`. `canSave`
+// drives the primary button's enabled/dimmed state (defaults to always-on).
+export function ModalActions({ onCancel, onSave, saveLabel, canSave = true, cancelLabel = 'Cancel' }: {
+  onCancel: () => void; onSave: () => void; saveLabel: ReactNode; canSave?: boolean; cancelLabel?: string;
+}) {
+  return (
+    <>
+      <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onCancel}>{cancelLabel}</button>
+      <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave} onClick={onSave}>
+        {saveLabel}
+      </button>
+    </>
+  );
+}
+
 export function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
