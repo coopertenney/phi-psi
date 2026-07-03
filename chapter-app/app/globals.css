@@ -151,6 +151,18 @@ button { font: inherit; }
   .pkp-side-card { margin-top:14px; }
 
   .pkp-grid-main { grid-template-columns:1fr; gap:14px !important; }
+
+  /* Detail drawers (member / event / pnm / finance) go full-width on phones
+     instead of a 412px panel that overflows a 375px screen. */
+  .pkp-drawer { width:100%; border-left:none; }
+
+  /* Members roster: drop to a compact tap-through list — avatar + name + status
+     + chevron. Role, points, and attendance live in the detail drawer. */
+  .pkp-members-list .pkp-table-head { display:none; }
+  .pkp-members-list .pkp-row { grid-template-columns:1fr auto 20px; padding:13px 16px; gap:10px; }
+  .pkp-members-list .pkp-row > :nth-child(2),
+  .pkp-members-list .pkp-row > :nth-child(4),
+  .pkp-members-list .pkp-row > :nth-child(5) { display:none; }
 }
 
 /* ---------- generic ---------- */
