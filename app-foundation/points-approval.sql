@@ -93,7 +93,9 @@ commit;
 
 -- Verify: status column exists, and pending entries (if any) are excluded from
 -- standings totals.
-select count(*) filter (where status = 'pending')  as pending_requests,
-       count(*) filter (where status = 'approved') as approved_entries
+-- (pe.status qualified: memberships also has a `status` column, so unqualified
+--  `status` here is ambiguous.)
+select count(*) filter (where pe.status = 'pending')  as pending_requests,
+       count(*) filter (where pe.status = 'approved') as approved_entries
 from points_entries pe join memberships m on m.id = pe.membership_id
 where m.chapter_id = 'aaaaaaaa-0000-0000-0000-000000000001';
