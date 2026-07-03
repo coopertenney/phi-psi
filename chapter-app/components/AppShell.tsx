@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { icons, type IconName } from './icons';
-import { AvatarUpload } from './AvatarUpload';
+import { MemberAvatar } from './MemberAvatar';
 import { SearchBox } from './SearchBox';
 import { AuthButton } from './AuthButton';
 import { useApp } from './Providers';
@@ -23,6 +23,7 @@ const PAGE: Record<string, string> = {
   '/points': 'Points',
   '/announcements': 'Announcements',
   '/files': 'Files',
+  '/profile': 'Profile',
   '/access': 'Access',
 };
 
@@ -84,13 +85,13 @@ export function AppShell({ members, currentUser, children }: {
         {/* Mobile only: the identity + persona + sign-out that live in the topbar
             on desktop move into the drawer, where there's room. */}
         <div className="pkp-drawer-account">
-          <div className="pkp-drawer-user">
-            <AvatarUpload name={user.name} src={user.avatarUrl} size={34} />
+          <Link href="/profile" className="pkp-drawer-user" style={{ textDecoration: 'none', color: 'inherit' }} onClick={() => setNavOpen(false)}>
+            <MemberAvatar name={user.name} src={user.avatarUrl} size={34} />
             <div style={{ lineHeight: 1.15, minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--pkp-side-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
               <div style={{ fontSize: 11.5, color: 'var(--pkp-side-muted)' }}>{user.title}</div>
             </div>
-          </div>
+          </Link>
           {canSwitchPersona && (
             <div className="pkp-seg" title="View as" style={{ marginTop: 10 }}>
               {PERSONAS.map((p) => (
@@ -128,13 +129,13 @@ export function AppShell({ members, currentUser, children }: {
                 ))}
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-              <AvatarUpload name={user.name} src={user.avatarUrl} size={38} />
+            <Link href="/profile" title="Your profile" style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', color: 'inherit' }}>
+              <MemberAvatar name={user.name} src={user.avatarUrl} size={38} />
               <div style={{ lineHeight: 1.15 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-900)' }}>{user.name}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>{user.title}</div>
               </div>
-            </div>
+            </Link>
             <AuthButton />
           </div>
         </header>

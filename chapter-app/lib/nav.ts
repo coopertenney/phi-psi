@@ -37,6 +37,7 @@ export const NAV_TABS: { href: string; id: string; label: string; locked?: boole
   { href: '/points', id: 'points', label: 'Points' },
   { href: '/announcements', id: 'announcements', label: 'Announcements' },
   { href: '/files', id: 'files', label: 'Files' },
+  { href: '/profile', id: 'profile', label: 'Profile' },
 ];
 
 // admin & exec see exec-level content; member & new see the member views.
