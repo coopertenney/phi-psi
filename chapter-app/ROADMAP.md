@@ -272,6 +272,23 @@ per CLAUDE.md). Wire `member_standings.attendance_pct` to computed data.
 RLS still needed later (see CLAUDE.md): `events`, `rsvps`, `meetings`,
 `points_entries` — read = chapter member, write = exec, RSVPs writable by self.
 
+## DEFERRED — Socials rename fallout
+
+The Events tab was renamed to **Socials** and narrowed to `social` + `brotherhood`
+events only (a week-grouped agenda timeline; `/events` now redirects to `/socials`).
+Two follow-ups were intentionally deferred:
+
+1. **Meeting attendance / check-in.** The old Events drawer's check-in flow (which
+   created a `meetings` row + recorded `attendance`) was dropped from Socials.
+   Move it onto the **Attendance** tab — meeting creation + per-member check-in —
+   since Attendance is currently display-only and nothing else creates meetings
+   in-app now. The old drawer logic lives in git history (component
+   `EventsScreen.tsx`, removed in the Socials commit) as a starting point.
+2. **Orphaned event types.** `philanthropy`, `service`, `meeting`, `mandatory`, and
+   `recruitment` events no longer have a screen (recruitment has its own tab).
+   `getEvents()` still returns them; they're just not surfaced. Decide whether
+   philanthropy/service get their own tab or fold into another view.
+
 ---
 
 ## How to run

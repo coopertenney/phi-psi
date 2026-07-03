@@ -18,7 +18,7 @@ const PAGE: Record<string, string> = {
   '/members': 'Members',
   '/recruitment': 'Recruitment',
   '/finances': 'Finances',
-  '/events': 'Events',
+  '/socials': 'Socials',
   '/attendance': 'Attendance',
   '/points': 'Points',
   '/announcements': 'Announcements',
@@ -50,7 +50,9 @@ export function AppShell({ members, currentUser, children }: {
   const aud = audienceFor(persona);
   const tabs = isAdmin
     ? [...NAV_TABS, { href: '/access', id: 'access', label: 'Access' }]
-    : NAV_TABS.filter((t) => (aud ? tabAccess[aud][t.href] : true));
+    // Default missing keys to visible (!== false), so a renamed/added tab (e.g.
+    // /events → /socials) isn't hidden for anyone with older persisted tabAccess.
+    : NAV_TABS.filter((t) => (aud ? tabAccess[aud][t.href] !== false : true));
 
   return (
     <div className={`pkp-app${navOpen ? ' nav-open' : ''}`}>

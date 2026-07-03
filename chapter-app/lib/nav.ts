@@ -32,7 +32,7 @@ export const NAV_TABS: { href: string; id: string; label: string; locked?: boole
   { href: '/members', id: 'members', label: 'Members' },
   { href: '/recruitment', id: 'recruitment', label: 'Recruitment' },
   { href: '/finances', id: 'finances', label: 'Finances' },
-  { href: '/events', id: 'events', label: 'Events' },
+  { href: '/socials', id: 'events', label: 'Socials' },
   { href: '/attendance', id: 'attendance', label: 'Attendance' },
   { href: '/points', id: 'points', label: 'Points' },
   { href: '/announcements', id: 'announcements', label: 'Announcements' },

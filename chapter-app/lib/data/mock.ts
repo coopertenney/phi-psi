@@ -260,6 +260,12 @@ const EVENT_SEED: EventSeed[] = [
   { id: 'evt-6', title: 'Alumni Spring BBQ', type: 'brotherhood', offsetDays: -4, hour: 12, durHrs: 3, location: 'Chapter House — Backyard', description: 'Annual alumni networking BBQ. Great turnout from the founding class. Photos posted in the chapter drive.', mandatory: false, points: 10 },
   { id: 'evt-7', title: 'Weekly Chapter Meeting', type: 'meeting', offsetDays: -4, hour: 19, durHrs: 1.5, location: 'Chapter House — Great Room', description: 'Held elections for the spring formal committee and approved the philanthropy calendar.', mandatory: true, points: 10 },
   { id: 'evt-8', title: 'Beach Cleanup', type: 'service', offsetDays: -11, hour: 10, durHrs: 3, location: 'Ocean Beach — Lot C', description: 'Coastal cleanup with the campus service council. Logged 36 service hours for the chapter.', mandatory: false, points: 20 },
+  // Extra socials so the Socials agenda timeline reads across several weeks.
+  { id: 'evt-9', title: 'Mixer with Alpha Phi', type: 'social', offsetDays: 2, hour: 21, durHrs: 3, location: 'Chapter House — Great Room', description: 'Co-hosted mixer with Alpha Phi. Theme drops in the group chat Thursday. Sober monitors already assigned.', mandatory: false, points: 3 },
+  { id: 'evt-10', title: 'Wing Wednesday', type: 'brotherhood', offsetDays: 4, hour: 19, durHrs: 2, location: 'Wingstop — University Ave', description: 'Low-key brotherhood dinner. Split the tab; bring a new member and points count double toward the brotherhood tier.', mandatory: false, points: 2 },
+  { id: 'evt-11', title: 'Big/Little Reveal', type: 'brotherhood', offsetDays: 9, hour: 19, durHrs: 3, location: 'Chapter House — Backyard', description: 'Reveal night for the new pledge class. Bigs, have your reveal boards ready by 6. Chapter photo after.', mandatory: false, points: 5 },
+  { id: 'evt-12', title: 'Spring Day Party w/ Kappa', type: 'social', offsetDays: 16, hour: 14, durHrs: 5, location: 'Chapter House — Lawn', description: 'Annual spring day party. Wristbands required at the door; guest list closes the night before. Setup crew at noon.', mandatory: false, points: 3 },
+  { id: 'evt-13', title: 'Winter Semiformal', type: 'social', offsetDays: -9, hour: 20, durHrs: 4, location: 'The Foundry — Event Hall', description: 'Winter semiformal. Great turnout — recap photos are up in the chapter drive.', mandatory: false, points: 15 },
 ];
 
 export const mockEvents: EventRow[] = EVENT_SEED.map((e) => {

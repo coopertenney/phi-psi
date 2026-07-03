@@ -76,7 +76,7 @@ treasurer" instead of a broken button.
 ## Screens (following Members pattern)
 
 - [x] **Finances** — dues table by brother, 3 stat cards (collected/outstanding/overdue); Stripe Checkout wired (card + ACH), gated by the FO on/off switch
-- [x] **Events** — exec list + drawer (RSVP summary, live check-in, RSVP→attend analytics); member RSVP + history
+- [x] **Socials** (was Events) — narrowed to `social`+`brotherhood`; week-grouped agenda timeline; exec create/edit + RSVP drawer, member RSVP + history. `/events`→`/socials`. Meetings/attendance moved off (deferred, see ROADMAP); philanthropy/service orphaned for now.
 - [x] **Attendance & Points** — exec meeting grid + points leaderboard; member attendance strip + points breakdown
 - [x] **Announcements** — audience-gated feed + exec compose
 - [x] **Dashboard** — officer view (events/announcements/leaders/flags); member dues + standing

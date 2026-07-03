@@ -101,7 +101,7 @@ function MemberDashboard({ member: m, events }: { member: MemberRow; events: Eve
           {next.map((e, i) => {
             const r = rsvpFor(m.membershipId, e.id, e.type, e.mandatory);
             return (
-              <Link key={e.id} href="/events" onClick={() => sessionStorage.setItem('pkp-focus-event', e.id)}
+              <Link key={e.id} href="/socials" onClick={() => sessionStorage.setItem('pkp-focus-event', e.id)}
                 className="pkp-rowlink" style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: i ? '1px solid var(--cream-200)' : 'none', borderRadius: i ? 0 : 'var(--radius-sm)' }}>
                 <MiniDate iso={e.startsAt} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -143,7 +143,7 @@ function ExecDashboard({ members, events, announcements }: Props) {
             <h3 className="pkp-h3" style={{ marginBottom: 14 }}>Upcoming events</h3>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {next.map((e, i) => (
-                <Link key={e.id} href="/events" onClick={() => sessionStorage.setItem('pkp-focus-event', e.id)}
+                <Link key={e.id} href="/socials" onClick={() => sessionStorage.setItem('pkp-focus-event', e.id)}
                   className="pkp-rowlink" style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: i ? '1px solid var(--cream-200)' : 'none', borderRadius: i ? 0 : 'var(--radius-sm)' }}>
                   <MiniDate iso={e.startsAt} />
                   <div style={{ flex: 1, minWidth: 0 }}>

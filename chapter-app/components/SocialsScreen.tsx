@@ -2,29 +2,32 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EventRow, EventType, MemberRow, RsvpState, AttendanceState } from '@/lib/types';
+import type { EventRow, EventType, MemberRow, RsvpState } from '@/lib/types';
 import type { EventRsvp } from '@/lib/data';
-import { fmtWeekday, fmtTime, relativeDay, type BadgeTone } from '@/lib/format';
+import { fmtTime, relativeDay, type BadgeTone } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { currentMember } from '@/lib/session';
-import { createEvent, updateEvent, deleteEvent, setRsvp, setAttendance, type EventInput } from '@/app/events/actions';
+import { createEvent, updateEvent, deleteEvent, setRsvp, type EventInput } from '@/app/socials/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 import { icons } from './icons';
 import { Modal, Field, Select, TextArea, FieldRow, Checkbox } from './form';
 
-/* ─────────────────────────── Shared bits ─────────────────────────── */
+/* ─────────────────────────── Socials = social + brotherhood ───────────────────────────
+   The tab was narrowed from the old all-purpose Events screen to just the social
+   calendar (mixers, formals, brotherhood nights). Meetings + attendance live on
+   the Attendance tab; philanthropy/service events don't have a home yet (orphaned
+   on purpose — see the DEFERRED note in ROADMAP). The view is a week-grouped
+   agenda timeline rather than a filtered table. */
 
-const TYPE_META: Record<EventType, { label: string; tone: BadgeTone }> = {
-  meeting: { label: 'Meeting', tone: 'neutral' },
-  philanthropy: { label: 'Philanthropy', tone: 'success' },
+const SOCIAL_TYPES: EventType[] = ['social', 'brotherhood'];
+const isSocial = (e: EventRow) => SOCIAL_TYPES.includes(e.type);
+
+const TYPE_META: Record<'social' | 'brotherhood', { label: string; tone: BadgeTone }> = {
   social: { label: 'Social', tone: 'info' },
   brotherhood: { label: 'Brotherhood', tone: 'warning' },
-  service: { label: 'Service', tone: 'success' },
-  mandatory: { label: 'Mandatory', tone: 'danger' },
-  recruitment: { label: 'Recruitment', tone: 'info' },
 };
-const typeMeta = (t: string) => TYPE_META[t as EventType] ?? { label: t, tone: 'neutral' as BadgeTone };
+const typeMeta = (t: string) => TYPE_META[t as 'social' | 'brotherhood'] ?? { label: t, tone: 'neutral' as BadgeTone };
 
 const RSVP_META: Record<RsvpState, { tone: BadgeTone; label: string }> = {
   going: { tone: 'success', label: 'Going' },
@@ -32,8 +35,38 @@ const RSVP_META: Record<RsvpState, { tone: BadgeTone; label: string }> = {
   no: { tone: 'neutral', label: 'Not going' },
 };
 
-const isPast = (e: EventRow): boolean => new Date(e.startsAt).getTime() < NOW.getTime();
+const DAY = 86_400_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const isPast = (e: EventRow): boolean => new Date(e.startsAt).getTime() < NOW.getTime();
+
+// Monday 00:00 of the week containing `d`.
+function startOfWeek(d: Date): Date {
+  const x = new Date(d);
+  const dow = (x.getDay() + 6) % 7; // 0 = Monday
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - dow);
+  return x;
+}
+// Relative week bucket for the agenda headers: This week / Next week / Week of …
+function weekBucket(iso: string, now: Date): { order: number; label: string } {
+  const base = startOfWeek(now).getTime();
+  const wk = startOfWeek(new Date(iso)).getTime();
+  const weeks = Math.round((wk - base) / (7 * DAY));
+  if (weeks <= 0) return { order: 0, label: 'This week' };
+  if (weeks === 1) return { order: 1, label: 'Next week' };
+  const d = new Date(wk);
+  return { order: weeks, label: `Week of ${MONTHS[d.getMonth()]} ${d.getDate()}` };
+}
+// Group already-sorted socials into ordered week buckets.
+function byWeek(socials: EventRow[], now: Date): { label: string; items: EventRow[] }[] {
+  const groups = new Map<number, { label: string; items: EventRow[] }>();
+  for (const e of socials) {
+    const b = weekBucket(e.startsAt, now);
+    if (!groups.has(b.order)) groups.set(b.order, { label: b.label, items: [] });
+    groups.get(b.order)!.items.push(e);
+  }
+  return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([, g]) => g);
+}
 
 // event id → (membership id → their RSVP)
 type RsvpIndex = Map<string, Map<string, RsvpState>>;
@@ -84,40 +117,30 @@ type Props = {
   rsvps: EventRsvp[];
   myMembershipId: string | null;
   live: boolean;
-  checkins: Record<string, Record<string, AttendanceState>>;
 };
 
-export function EventsScreen({ events, members, rsvps, myMembershipId, live, checkins }: Props) {
+export function SocialsScreen({ events, members, rsvps, myMembershipId, live }: Props) {
   const { role, persona } = useApp();
   const rsvpIndex = useMemo(() => buildIndex(rsvps), [rsvps]);
+  const socials = useMemo(() => events.filter(isSocial), [events]);
 
   if (role === 'member') {
     const me = live ? members.find((m) => m.membershipId === myMembershipId) : currentMember(members, persona);
     return me
-      ? <MemberEvents events={events} me={me} rsvpIndex={rsvpIndex} live={live} />
+      ? <MemberSocials socials={socials} me={me} rsvpIndex={rsvpIndex} live={live} />
       : <p style={{ color: 'var(--ink-500)' }}>Your member profile isn’t loaded yet.</p>;
   }
-  return <ExecEvents events={events} members={members} rsvpIndex={rsvpIndex} live={live} checkins={checkins} />;
+  return <ExecSocials socials={socials} members={members} rsvpIndex={rsvpIndex} live={live} />;
 }
 
-/* ─────────────────────────── Exec view ─────────────────────────── */
+/* ─────────────────────────── Exec: agenda + create/edit ─────────────────────────── */
 
-const CHIPS = [
-  { id: 'upcoming', label: 'Upcoming' },
-  { id: 'past', label: 'Past' },
-  { id: 'mandatory', label: 'Mandatory' },
-  { id: 'all', label: 'All' },
-] as const;
-type Filter = (typeof CHIPS)[number]['id'];
-
-function ExecEvents({ events, members, rsvpIndex, live, checkins }: {
-  events: EventRow[]; members: MemberRow[]; rsvpIndex: RsvpIndex; live: boolean;
-  checkins: Record<string, Record<string, AttendanceState>>;
+function ExecSocials({ socials, members, rsvpIndex, live }: {
+  socials: EventRow[]; members: MemberRow[]; rsvpIndex: RsvpIndex; live: boolean;
 }) {
   const router = useRouter();
-  const [list, setList] = useState<EventRow[]>(events);
-  useEffect(() => setList(events), [events]); // follow server refreshes
-  const [filter, setFilter] = useState<Filter>('upcoming');
+  const [list, setList] = useState<EventRow[]>(socials);
+  useEffect(() => setList(socials), [socials]); // follow server refreshes
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<EventRow | 'new' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -131,6 +154,8 @@ function ExecEvents({ events, members, rsvpIndex, live, checkins }: {
     () => [...list].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
     [list],
   );
+  const upcoming = useMemo(() => byWeek(sorted.filter((e) => !isPast(e)), NOW), [sorted]);
+  const past = useMemo(() => sorted.filter(isPast).reverse(), [sorted]);
   const selected = list.find((e) => e.id === selectedId) ?? null;
 
   const save = async (e: EventRow, isNew: boolean) => {
@@ -145,7 +170,7 @@ function ExecEvents({ events, members, rsvpIndex, live, checkins }: {
       router.refresh();
       setForm(null);
     } catch (err: any) {
-      alert(err?.message ?? 'Could not save the event.');
+      alert(err?.message ?? 'Could not save the social.');
     } finally {
       setBusy(false);
     }
@@ -155,96 +180,86 @@ function ExecEvents({ events, members, rsvpIndex, live, checkins }: {
     if (!live) { setList((l) => l.filter((x) => x.id !== id)); setSelectedId(null); setForm(null); return; }
     setBusy(true);
     try { await deleteEvent(id); router.refresh(); setSelectedId(null); setForm(null); }
-    catch (err: any) { alert(err?.message ?? 'Could not delete the event.'); }
+    catch (err: any) { alert(err?.message ?? 'Could not delete the social.'); }
     finally { setBusy(false); }
   };
 
-  const rows = sorted.filter((e) =>
-    filter === 'all' ? true
-    : filter === 'mandatory' ? e.mandatory
-    : filter === 'past' ? isPast(e)
-    : !isPast(e),
-  );
-  const upcoming = sorted.filter((e) => !isPast(e));
-  const next = upcoming[0];
-  const active = members.filter((m) => m.status !== 'inactive').length;
-
-  const cards = [
-    { val: String(upcoming.length), top: 'var(--pkp-primary)', label: 'Upcoming events', sub: next ? `Next: ${next.title}` : 'None scheduled' },
-    { val: next ? String(next.rsvp.going) : '—', top: 'var(--success-500)', label: 'Going to next', sub: next ? `of ${active} active brothers` : '' },
-    { val: String(list.filter((e) => e.mandatory && !isPast(e)).length), top: 'var(--warning-500)', label: 'Mandatory ahead', sub: 'attendance recorded' },
-  ];
+  const row = (e: EventRow, muted = false) => {
+    const tm = typeMeta(e.type);
+    return (
+      <div key={e.id} className="pkp-row" style={{ display: 'flex', gap: 14, alignItems: 'center', gridTemplateColumns: 'unset' }} onClick={() => setSelectedId(e.id)}>
+        <DateBlock iso={e.startsAt} muted={muted} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink-900)' }}>{e.title}</span>
+            <Badge tone={tm.tone}>{tm.label}</Badge>
+            {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 3 }}>
+            {relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)} · {e.location}
+          </div>
+        </div>
+        <div style={{ width: 132, flexShrink: 0 }}>
+          <div style={{ fontSize: 12, color: 'var(--ink-600)', marginBottom: 5, textAlign: 'right' }}>
+            <span style={{ fontWeight: 600, color: 'var(--ink-800)' }}>{e.rsvp.going}</span> going
+          </div>
+          <RsvpBar rsvp={e.rsvp} />
+        </div>
+        <div style={{ display: 'flex', color: 'var(--ink-400)' }}>{icons.chevron}</div>
+      </div>
+    );
+  };
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-        {cards.map((c) => (
-          <div key={c.label} className="pkp-stat">
-            <div className="pkp-stat-val">{c.val}</div>
-            <div className="pkp-stat-label">{c.label}</div>
-            <div className="pkp-stat-sub">{c.sub}</div>
-          </div>
-        ))}
-      </div>
-
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div className="pkp-chips">
-          {CHIPS.map((c) => (
-            <button key={c.id} className={`pkp-chip${filter === c.id ? ' on' : ''}`} onClick={() => setFilter(c.id)}>{c.label}</button>
-          ))}
+        <div>
+          <h3 className="pkp-h3">Socials</h3>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 2 }}>Mixers, formals & brotherhood nights</div>
         </div>
         <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 18px', fontSize: 13.5, boxShadow: 'var(--shadow-sm)' }} onClick={() => setForm('new')}>
-          <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Create event
+          <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Create social
         </button>
       </div>
 
-      <div className="pkp-card" style={{ overflow: 'hidden' }}>
-        {rows.map((e, i) => {
-          const tm = typeMeta(e.type);
-          const past = isPast(e);
-          return (
-            <div key={e.id} className="pkp-row" style={{ display: 'flex', gap: 14, alignItems: 'center', gridTemplateColumns: 'unset', borderTop: i ? '1px solid var(--cream-200)' : 'none' }} onClick={() => setSelectedId(e.id)}>
-              <DateBlock iso={e.startsAt} muted={past} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink-900)' }}>{e.title}</span>
-                  <Badge tone={tm.tone}>{tm.label}</Badge>
-                  {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
-                </div>
-                <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 3 }}>
-                  {fmtWeekday(e.startsAt)} · {fmtTime(e.startsAt)} · {e.location}
-                </div>
-              </div>
-              <div style={{ width: 132, flexShrink: 0 }}>
-                <div style={{ fontSize: 12, color: 'var(--ink-600)', marginBottom: 5, textAlign: 'right' }}>
-                  <span style={{ fontWeight: 600, color: 'var(--ink-800)' }}>{e.rsvp.going}</span> going
-                </div>
-                <RsvpBar rsvp={e.rsvp} />
-              </div>
-              <div style={{ display: 'flex', color: 'var(--ink-400)' }}>{icons.chevron}</div>
-            </div>
-          );
-        })}
-        {rows.length === 0 && (
-          <div style={{ padding: 32, textAlign: 'center', fontSize: 13.5, color: 'var(--ink-500)' }}>
-            No events in this view.{filter !== 'past' && ' Click “Create event” to add one.'}
+      {upcoming.length === 0 && (
+        <div className="pkp-card" style={{ padding: 32, textAlign: 'center', fontSize: 13.5, color: 'var(--ink-500)' }}>
+          No upcoming socials. Click “Create social” to add one.
+        </div>
+      )}
+      {upcoming.map((g) => (
+        <section key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="pkp-col-head">{g.label}</div>
+          <div className="pkp-card" style={{ overflow: 'hidden' }}>
+            {g.items.map((e, i) => (
+              <div key={e.id} style={{ borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>{row(e)}</div>
+            ))}
           </div>
-        )}
-      </div>
+        </section>
+      ))}
+
+      {past.length > 0 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="pkp-col-head">Past</div>
+          <div className="pkp-card" style={{ overflow: 'hidden' }}>
+            {past.map((e, i) => (
+              <div key={e.id} style={{ borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>{row(e, true)}</div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {selected && (
-        <EventDrawer
+        <SocialDrawer
           event={selected}
           members={members}
           eventRsvps={rsvpIndex.get(selected.id) ?? new Map()}
-          live={live}
-          initialCheckin={checkins[selected.id] ?? {}}
           onClose={() => setSelectedId(null)}
           onEdit={() => setForm(selected)}
         />
       )}
       {form && (
-        <EventFormModal
+        <SocialFormModal
           base={form === 'new' ? undefined : form}
           busy={busy}
           onClose={() => setForm(null)}
@@ -256,30 +271,29 @@ function ExecEvents({ events, members, rsvpIndex, live, checkins }: {
   );
 }
 
-const EVENT_TYPES: EventType[] = ['meeting', 'philanthropy', 'social', 'brotherhood', 'service', 'mandatory', 'recruitment'];
-
 const pad = (n: number) => String(n).padStart(2, '0');
 const toDateInput = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const toTimeInput = (iso: string) => { const d = new Date(iso); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
-function EventFormModal({ base, busy, onClose, onSave, onDelete }: {
+function SocialFormModal({ base, busy, onClose, onSave, onDelete }: {
   base?: EventRow; busy: boolean; onClose: () => void; onSave: (e: EventRow) => void; onDelete?: () => void;
 }) {
   const start = base ? new Date(base.startsAt) : new Date(NOW);
   const [title, setTitle] = useState(base?.title ?? '');
-  const [type, setType] = useState<EventType>((base?.type as EventType) ?? 'social');
+  // Socials tab only creates social/brotherhood events (see SOCIAL_TYPES).
+  const [type, setType] = useState<EventType>(base && isSocial(base) ? base.type : 'social');
   const [date, setDate] = useState(toDateInput((base ?? { startsAt: start.toISOString() }).startsAt));
-  const [time, setTime] = useState(base ? toTimeInput(base.startsAt) : '19:00');
+  const [time, setTime] = useState(base ? toTimeInput(base.startsAt) : '21:00');
   const [location, setLocation] = useState(base?.location ?? '');
   const [description, setDescription] = useState(base?.description ?? '');
   const [mandatory, setMandatory] = useState(base?.mandatory ?? false);
-  const [points, setPoints] = useState(String(base?.pointsValue ?? 10));
+  const [points, setPoints] = useState(String(base?.pointsValue ?? 0));
 
   const canSave = title.trim() !== '' && date !== '' && location.trim() !== '' && !busy;
   const submit = () => {
     if (!canSave) return;
-    const startsAt = new Date(`${date}T${time || '19:00'}`).toISOString();
-    const endsAt = new Date(new Date(startsAt).getTime() + 90 * 60_000).toISOString();
+    const startsAt = new Date(`${date}T${time || '21:00'}`).toISOString();
+    const endsAt = new Date(new Date(startsAt).getTime() + 120 * 60_000).toISOString();
     onSave({
       id: base?.id ?? `evt-local-${Date.now()}`,
       title: title.trim(), type, startsAt, endsAt,
@@ -290,23 +304,23 @@ function EventFormModal({ base, busy, onClose, onSave, onDelete }: {
   };
 
   return (
-    <Modal title={base ? 'Edit event' : 'Create event'} sub={base?.title ?? 'New chapter event'} onClose={onClose} width={500}
+    <Modal title={base ? 'Edit social' : 'Create social'} sub={base?.title ?? 'New social event'} onClose={onClose} width={500}
       footer={<>
         {onDelete && (
           <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 14px', fontSize: 13.5, color: 'var(--danger-600, #dc2626)', marginRight: 'auto' }}
-            disabled={busy} onClick={() => { if (confirm('Delete this event? This cannot be undone.')) onDelete(); }}>
+            disabled={busy} onClick={() => { if (confirm('Delete this social? This cannot be undone.')) onDelete(); }}>
             Delete
           </button>
         )}
         <button className="pkp-btn-ghost" style={{ height: 38, padding: '0 16px', fontSize: 13.5 }} onClick={onClose}>Cancel</button>
         <button className="pkp-btn-primary" style={{ height: 38, padding: '0 18px', fontSize: 13.5, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }} disabled={!canSave} onClick={submit}>
-          {busy ? 'Saving…' : base ? 'Save changes' : 'Create event'}
+          {busy ? 'Saving…' : base ? 'Save changes' : 'Create social'}
         </button>
       </>}>
       <Field label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Founders Day Formal" />
       <FieldRow>
         <Select label="Type" value={type} onChange={(e) => setType(e.target.value as EventType)}
-          options={EVENT_TYPES.map((t) => ({ value: t, label: TYPE_META[t].label }))} />
+          options={SOCIAL_TYPES.map((t) => ({ value: t, label: TYPE_META[t as 'social' | 'brotherhood'].label }))} />
         <Field label="Points" type="number" min={0} value={points} onChange={(e) => setPoints(e.target.value)} />
       </FieldRow>
       <FieldRow>
@@ -315,31 +329,25 @@ function EventFormModal({ base, busy, onClose, onSave, onDelete }: {
       </FieldRow>
       <Field label="Location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Chapter House — Great Room" />
       <TextArea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What's happening?" />
-      <Checkbox label="Mandatory (attendance recorded)" checked={mandatory} onChange={(e) => setMandatory(e.target.checked)} />
+      <Checkbox label="Mandatory" checked={mandatory} onChange={(e) => setMandatory(e.target.checked)} />
     </Modal>
   );
 }
 
-function EventDrawer({ event: e, members, eventRsvps, live, initialCheckin, onClose, onEdit }: {
-  event: EventRow; members: MemberRow[]; eventRsvps: Map<string, RsvpState>; live: boolean;
-  initialCheckin: Record<string, AttendanceState>; onClose: () => void; onEdit: () => void;
+function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
+  event: EventRow; members: MemberRow[]; eventRsvps: Map<string, RsvpState>; onClose: () => void; onEdit: () => void;
 }) {
   const tm = typeMeta(e.type);
   const past = isPast(e);
   const roster = useMemo(() => members.filter((m) => m.status !== 'inactive'), [members]);
-
-  const [present, setPresent] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(Object.entries(initialCheckin).map(([id, s]) => [id, s === 'present'])));
-  const toggle = (id: string) => {
-    const next = !present[id];
-    setPresent((p) => ({ ...p, [id]: next }));
-    if (live) setAttendance(e.id, id, next).catch((err: any) => alert(err?.message ?? 'Could not save check-in.'));
-  };
-
-  const goingCount = roster.filter((m) => eventRsvps.get(m.membershipId) === 'going').length;
-  const presentCount = roster.filter((m) => present[m.membershipId]).length;
-  const goingPresent = roster.filter((m) => eventRsvps.get(m.membershipId) === 'going' && present[m.membershipId]).length;
-  const showRate = goingCount > 0 ? Math.round((goingPresent / goingCount) * 100) : null;
+  // Guest list = who RSVP'd, going first. (Attendance check-in is deferred — it
+  // moves to the Attendance tab; this drawer is RSVP-only.)
+  const ORDER: Record<string, number> = { going: 0, maybe: 1, no: 2, none: 3 };
+  const guests = useMemo(
+    () => [...roster].sort((a, b) =>
+      ORDER[eventRsvps.get(a.membershipId) ?? 'none'] - ORDER[eventRsvps.get(b.membershipId) ?? 'none']),
+    [roster, eventRsvps],
+  );
 
   const stat = (val: string, label: string, color: string) => (
     <div className="pkp-card" style={{ padding: 14 }}>
@@ -394,61 +402,48 @@ function EventDrawer({ event: e, members, eventRsvps, live, initialCheckin, onCl
           </div>
 
           <div className="pkp-card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div className="pkp-col-head">{past ? 'Check-in' : 'Guest list'}</div>
-              <span className="pkp-mono" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--pkp-primary)' }}>{presentCount} present</span>
-            </div>
+            <div className="pkp-col-head" style={{ marginBottom: 12 }}>Guest list</div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {roster.map((m, i) => {
+              {guests.map((m, i) => {
                 const r = eventRsvps.get(m.membershipId) ?? null;
-                const on = present[m.membershipId];
                 return (
                   <div key={m.membershipId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
                     <Avatar name={m.fullName} size={32} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-800)' }}>{m.fullName}</div>
-                      <div style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>{r ? RSVP_META[r].label : 'No response'}</div>
                     </div>
-                    <button onClick={() => toggle(m.membershipId)} className={on ? 'pkp-btn-primary' : 'pkp-btn-ghost'}
-                      style={{ height: 30, padding: '0 13px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      {on ? '✓ Present' : 'Check in'}
-                    </button>
+                    {r ? <Badge tone={RSVP_META[r].tone}>{RSVP_META[r].label}</Badge> : <Badge tone="neutral">No response</Badge>}
                   </div>
                 );
               })}
             </div>
-            {!live && (
-              <div style={{ fontSize: 11.5, color: 'var(--ink-400)', marginTop: 10 }}>
-                Check-in is not saved yet — mock mode only.
-              </div>
-            )}
           </div>
         </div>
 
         <div style={{ padding: '16px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10 }}>
-          <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onEdit}>Edit event</button>
+          <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onEdit}>Edit social</button>
         </div>
       </div>
     </>
   );
 }
 
-/* ─────────────────────────── Member view ─────────────────────────── */
+/* ─────────────────────────── Member: agenda + RSVP ─────────────────────────── */
 
-function MemberEvents({ events, me, rsvpIndex, live }: {
-  events: EventRow[]; me: MemberRow; rsvpIndex: RsvpIndex; live: boolean;
+function MemberSocials({ socials, me, rsvpIndex, live }: {
+  socials: EventRow[]; me: MemberRow; rsvpIndex: RsvpIndex; live: boolean;
 }) {
   const router = useRouter();
   const sorted = useMemo(
-    () => [...events].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
-    [events],
+    () => [...socials].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
+    [socials],
   );
-  const upcoming = sorted.filter((e) => !isPast(e));
-  const past = sorted.filter((e) => isPast(e)).reverse();
+  const upcoming = useMemo(() => byWeek(sorted.filter((e) => !isPast(e)), NOW), [sorted]);
+  const past = useMemo(() => sorted.filter(isPast).reverse(), [sorted]);
 
   const seed = useMemo(
-    () => Object.fromEntries(events.map((e) => [e.id, rsvpIndex.get(e.id)?.get(me.membershipId) ?? null])) as Record<string, RsvpState | null>,
-    [events, rsvpIndex, me.membershipId],
+    () => Object.fromEntries(socials.map((e) => [e.id, rsvpIndex.get(e.id)?.get(me.membershipId) ?? null])) as Record<string, RsvpState | null>,
+    [socials, rsvpIndex, me.membershipId],
   );
   const [rsvps, setRsvps] = useState<Record<string, RsvpState | null>>(seed);
   useEffect(() => setRsvps(seed), [seed]);
@@ -473,45 +468,50 @@ function MemberEvents({ events, me, rsvpIndex, live }: {
   return (
     <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 22 }}>
       <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h3 className="pkp-h3">Upcoming</h3>
-        {upcoming.length === 0 && <div className="pkp-card" style={{ padding: 20, fontSize: 13.5, color: 'var(--ink-500)' }}>No upcoming events yet.</div>}
-        {upcoming.map((e) => {
-          const tm = typeMeta(e.type);
-          const mine = rsvps[e.id] ?? null;
-          return (
-            <div key={e.id} id={`evt-${e.id}`} className={`pkp-card${flashId === e.id ? ' pkp-flash' : ''}`} style={{ padding: 16, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
-              <DateBlock iso={e.startsAt} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-900)' }}>{e.title}</span>
-                  <Badge tone={tm.tone}>{tm.label}</Badge>
-                  {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
+        <h3 className="pkp-h3">Upcoming socials</h3>
+        {upcoming.length === 0 && <div className="pkp-card" style={{ padding: 20, fontSize: 13.5, color: 'var(--ink-500)' }}>No upcoming socials yet.</div>}
+        {upcoming.map((g) => (
+          <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="pkp-col-head">{g.label}</div>
+            {g.items.map((e) => {
+              const tm = typeMeta(e.type);
+              const mine = rsvps[e.id] ?? null;
+              return (
+                <div key={e.id} id={`evt-${e.id}`} className={`pkp-card${flashId === e.id ? ' pkp-flash' : ''}`} style={{ padding: 16, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  <DateBlock iso={e.startsAt} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-900)' }}>{e.title}</span>
+                      <Badge tone={tm.tone}>{tm.label}</Badge>
+                      {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 3 }}>
+                      {relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)} · {e.location}
+                    </div>
+                    {e.description && <p style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.55, margin: '10px 0 0' }}>{e.description}</p>}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                      {(['going', 'maybe', 'no'] as RsvpState[]).map((s) => {
+                        const on = mine === s;
+                        return (
+                          <button key={s} onClick={() => onRsvp(e.id, s)} className={on ? 'pkp-btn-primary' : 'pkp-btn-ghost'}
+                            style={{ flex: 1, height: 38, fontSize: 13, padding: '0 10px' }}>
+                            {RSVP_META[s].label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 3 }}>
-                  {relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)} · {e.location}
-                </div>
-                {e.description && <p style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.55, margin: '10px 0 0' }}>{e.description}</p>}
-                <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                  {(['going', 'maybe', 'no'] as RsvpState[]).map((s) => {
-                    const on = mine === s;
-                    return (
-                      <button key={s} onClick={() => onRsvp(e.id, s)} className={on ? 'pkp-btn-primary' : 'pkp-btn-ghost'}
-                        style={{ flex: 1, height: 38, fontSize: 13, padding: '0 10px' }}>
-                        {RSVP_META[s].label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
       </section>
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <h3 className="pkp-h3">Your RSVP history</h3>
         <div className="pkp-card" style={{ overflow: 'hidden' }}>
-          {past.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: 'var(--ink-500)' }}>No past events yet.</div>}
+          {past.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: 'var(--ink-500)' }}>No past socials yet.</div>}
           {past.map((e, i) => {
             const r = rsvpIndex.get(e.id)?.get(me.membershipId) ?? null;
             return (
