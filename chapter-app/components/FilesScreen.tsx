@@ -10,8 +10,8 @@ import { useApp } from './Providers';
 import { Badge } from './ui';
 import { icons } from './icons';
 import { Modal, Field } from './form';
+import { CHAPTER_ID } from '@/lib/chapter';
 
-const CHAPTER_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
 const BUCKET = 'chapter-files';
 
 // ── Per-kind color + label, used for the file/folder glyph. ──

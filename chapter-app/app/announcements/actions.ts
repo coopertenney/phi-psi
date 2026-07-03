@@ -1,13 +1,14 @@
 'use server';
 
 import { getServerSupabase } from '@/lib/supabase/server';
-
-const CHAPTER_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
+import { requireMembershipId } from '@/lib/membership';
+import { CHAPTER_ID } from '@/lib/chapter';
+import type { AnnouncementAudience } from '@/lib/types';
 
 export interface AnnouncementInput {
   title: string;
   body: string;
-  audience: 'all' | 'officers';
+  audience: AnnouncementAudience;
   category: 'general' | 'event' | 'finance' | 'urgent';
 }
 
@@ -15,18 +16,11 @@ export interface AnnouncementInput {
 // signed-in exec's own membership row.
 export async function postAnnouncement(input: AnnouncementInput) {
   const sb = getServerSupabase();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) throw new Error('Not signed in');
-
-  const { data: prof } = await sb.from('profiles').select('id').eq('auth_user_id', user.id).maybeSingle();
-  const { data: mem } = prof
-    ? await sb.from('memberships').select('id').eq('profile_id', prof.id).maybeSingle()
-    : { data: null };
-  if (!mem) throw new Error('You’re not on the roster');
+  const membershipId = await requireMembershipId(sb);
 
   const { error } = await sb.from('announcements').insert({
     chapter_id: CHAPTER_ID,
-    author_id: mem.id,
+    author_id: membershipId,
     title: input.title,
     body: input.body,
     audience: input.audience,

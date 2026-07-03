@@ -33,8 +33,6 @@ export const nextStage = (stage: PnmStage): PnmStage | null => {
   return i >= 0 && i < FUNNEL_IDS.length - 1 ? FUNNEL_IDS[i + 1] : null;
 };
 
-export const stageIndex = (stage: PnmStage): number => FUNNEL_IDS.indexOf(stage);
-
 /* ─────────────────────────── Notes ───────────────────────────
    Deterministic note thread per PNM, drawn from a template pool and attributed
    to brothers — so the mock is stable and the detail view feels populated.

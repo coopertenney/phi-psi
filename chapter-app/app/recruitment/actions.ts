@@ -1,22 +1,9 @@
 'use server';
 
 import { getServerSupabase } from '@/lib/supabase/server';
+import { requireMembershipId } from '@/lib/membership';
+import { CHAPTER_ID } from '@/lib/chapter';
 import type { PnmStage } from '@/lib/types';
-
-const CHAPTER_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
-
-// The signed-in member's own membership id, for self-writable rows
-// (rating/vote/note). Throws if they're not on the roster.
-async function myMembershipId(sb: ReturnType<typeof getServerSupabase>): Promise<string> {
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) throw new Error('Not signed in');
-  const { data: prof } = await sb.from('profiles').select('id').eq('auth_user_id', user.id).maybeSingle();
-  const { data: mem } = prof
-    ? await sb.from('memberships').select('id').eq('profile_id', prof.id).maybeSingle()
-    : { data: null };
-  if (!mem) throw new Error('You’re not on the roster');
-  return mem.id;
-}
 
 export interface PnmInput {
   fullName: string;
@@ -55,7 +42,7 @@ export async function setPnmStage(id: string, stage: PnmStage) {
 // own rating. 0 clears (removes) the rating, matching the star-toggle UI.
 export async function ratePnm(pnmId: string, rating: number) {
   const sb = getServerSupabase();
-  const membershipId = await myMembershipId(sb);
+  const membershipId = await requireMembershipId(sb);
   if (rating <= 0) {
     const { error } = await sb.from('pnm_ratings').delete().eq('pnm_id', pnmId).eq('membership_id', membershipId);
     if (error) throw new Error(error.message);
@@ -70,7 +57,7 @@ export async function ratePnm(pnmId: string, rating: number) {
 // Self-writable — RLS (pnm_votes_mine). null clears the vote (toggle off).
 export async function votePnm(pnmId: string, vote: 'yes' | 'no' | null) {
   const sb = getServerSupabase();
-  const membershipId = await myMembershipId(sb);
+  const membershipId = await requireMembershipId(sb);
   if (vote === null) {
     const { error } = await sb.from('pnm_votes').delete().eq('pnm_id', pnmId).eq('membership_id', membershipId);
     if (error) throw new Error(error.message);
@@ -86,7 +73,7 @@ export async function votePnm(pnmId: string, vote: 'yes' | 'no' | null) {
 // their own membership id server-side.
 export async function addPnmNote(pnmId: string, text: string) {
   const sb = getServerSupabase();
-  const membershipId = await myMembershipId(sb);
+  const membershipId = await requireMembershipId(sb);
   const { error } = await sb.from('pnm_notes').insert({ pnm_id: pnmId, membership_id: membershipId, body: text });
   if (error) throw new Error(error.message);
 }

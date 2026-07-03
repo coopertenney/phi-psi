@@ -61,11 +61,3 @@ export function rsvpFor(salt: string, eventId: string, type: EventType, mandator
   if (u < 0.84) return 'no';
   return null;
 }
-
-// Whether a member actually showed at a past event, correlated with their RSVP.
-export function attendanceForEvent(salt: string, eventId: string, rsvp: RsvpState | null): AttendanceState {
-  const u = unit(`${salt}-${eventId}-att`);
-  if (rsvp === 'going') return u < 0.88 ? 'present' : u < 0.94 ? 'excused' : 'absent';
-  if (rsvp === 'maybe') return u < 0.5 ? 'present' : u < 0.66 ? 'excused' : 'absent';
-  return u < 0.12 ? 'present' : 'absent';
-}

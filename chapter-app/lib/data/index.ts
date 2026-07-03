@@ -5,6 +5,7 @@ import type {
   PointItem, PointEntry, DriveItem, RsvpState,
 } from '../types';
 import { isSupabaseConfigured, getServerSupabase } from '../supabase/server';
+import { resolveMembershipId } from '../membership';
 import {
   mockMembers, mockStats, mockEvents, mockMeetings, mockAttendance, mockAnnouncements, mockPnms,
   mockPointItems, mockPointEntries, mockFiles,
@@ -15,6 +16,10 @@ import { CHAPTER_ID } from '../chapter';
 
 const roleLabel = (position: string | null, status: string) =>
   position ?? (status === 'new' ? 'New Member' : 'Brother');
+
+// access_role → display label, used where there's no explicit position title.
+const accessRoleLabel = (role: string | null): string =>
+  role === 'admin' ? 'Admin' : role === 'exec' ? 'Officer' : 'Brother';
 
 export async function getMembers(): Promise<MemberRow[]> {
   if (!isSupabaseConfigured) return mockMembers;
@@ -86,8 +91,7 @@ export async function getCurrentUser(): Promise<
   const { data: mem } = await sb.from('memberships').select('position, access_role, status').eq('profile_id', prof.id).maybeSingle();
   const accessRole = (mem?.access_role as 'admin' | 'exec' | 'member' | undefined) ?? null;
   const status = (mem?.status as 'active' | 'new' | 'inactive' | undefined) ?? null;
-  const title = mem?.position
-    ?? (accessRole === 'admin' ? 'Admin' : accessRole === 'exec' ? 'Officer' : 'Brother');
+  const title = mem?.position ?? accessRoleLabel(accessRole);
   return { fullName: prof.full_name, title, accessRole, status };
 }
 
@@ -167,16 +171,6 @@ export async function getEvents(): Promise<EventRow[]> {
   return (evs ?? []).map((row: any) => mapEvent(row, rsvps));
 }
 
-export async function getEvent(id: string): Promise<EventRow | null> {
-  if (!isSupabaseConfigured) return mockEvents.find((e) => e.id === id) ?? null;
-  const sb = getServerSupabase();
-  const [{ data: row }, { data: rs }] = await Promise.all([
-    sb.from('events').select('*').eq('id', id).maybeSingle(),
-    sb.from('rsvps').select('event_id, membership_id, status').eq('event_id', id),
-  ]);
-  return row ? mapEvent(row, rs ?? []) : null;
-}
-
 // Per-member RSVP records (for the exec drawer's guest list + each member's own
 // choice). Empty in mock mode — the screen derives demo RSVPs there instead.
 export async function getEventRsvps(): Promise<EventRsvp[]> {
@@ -193,13 +187,7 @@ export async function getEventRsvps(): Promise<EventRsvp[]> {
 // Null in mock mode (identity is the persona toggle there).
 export async function getMyMembershipId(): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
-  const sb = getServerSupabase();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return null;
-  const { data: prof } = await sb.from('profiles').select('id').eq('auth_user_id', user.id).maybeSingle();
-  if (!prof) return null;
-  const { data: mem } = await sb.from('memberships').select('id').eq('profile_id', prof.id).maybeSingle();
-  return mem?.id ?? null;
+  return resolveMembershipId(getServerSupabase());
 }
 
 export async function getMeetings(): Promise<MeetingRow[]> {
@@ -281,7 +269,7 @@ export async function getAnnouncements(): Promise<AnnouncementRow[]> {
       title: r.title,
       body: r.body,
       author: mem?.profiles?.full_name ?? 'Chapter',
-      authorRole: mem?.position ?? (mem?.access_role === 'admin' ? 'Admin' : mem?.access_role === 'exec' ? 'Officer' : 'Brother'),
+      authorRole: mem?.position ?? accessRoleLabel(mem?.access_role ?? null),
       createdAt: r.created_at,
       audience: r.audience,
       pinned: r.pinned,
@@ -334,12 +322,6 @@ export async function getPnms(): Promise<PnmRow[]> {
       eventsAttended: p.events_attended,
     };
   });
-}
-
-export async function getPnm(id: string): Promise<PnmRow | null> {
-  if (!isSupabaseConfigured) return mockPnms.find((p) => p.id === id) ?? null;
-  const all = await getPnms();
-  return all.find((p) => p.id === id) ?? null;
 }
 
 // Note thread per PNM, keyed by pnm id. Empty in mock mode — RecruitmentScreen

@@ -1,8 +1,8 @@
 'use server';
 
 import { getServerSupabase } from '@/lib/supabase/server';
-
-const CHAPTER_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
+import { requireMembershipId } from '@/lib/membership';
+import { CHAPTER_ID } from '@/lib/chapter';
 
 export interface EventInput {
   title: string;
@@ -49,17 +49,10 @@ export async function deleteEvent(id: string) {
 // member can only write their own row.
 export async function setRsvp(eventId: string, status: 'going' | 'maybe' | 'no' | null) {
   const sb = getServerSupabase();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) throw new Error('Not signed in');
-
-  const { data: prof } = await sb.from('profiles').select('id').eq('auth_user_id', user.id).maybeSingle();
-  const { data: mem } = prof
-    ? await sb.from('memberships').select('id').eq('profile_id', prof.id).maybeSingle()
-    : { data: null };
-  if (!mem) throw new Error('You’re not on the roster');
+  const membershipId = await requireMembershipId(sb);
 
   if (status === null) {
-    const { error } = await sb.from('rsvps').delete().eq('event_id', eventId).eq('membership_id', mem.id);
+    const { error } = await sb.from('rsvps').delete().eq('event_id', eventId).eq('membership_id', membershipId);
     if (error) throw new Error(error.message);
     return;
   }
@@ -67,7 +60,7 @@ export async function setRsvp(eventId: string, status: 'going' | 'maybe' | 'no' 
   const dbStatus = status === 'no' ? 'declined' : status;
   const { error } = await sb
     .from('rsvps')
-    .upsert({ event_id: eventId, membership_id: mem.id, status: dbStatus }, { onConflict: 'event_id,membership_id' });
+    .upsert({ event_id: eventId, membership_id: membershipId, status: dbStatus }, { onConflict: 'event_id,membership_id' });
   if (error) throw new Error(error.message);
 }
 
