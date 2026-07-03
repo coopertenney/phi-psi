@@ -59,7 +59,7 @@ function MemberDashboard({ member: m, events }: { member: MemberRow; events: Eve
       {settled ? (
         <PaidPill label="Dues paid in full" sub={CURRENT_QUARTER_LABEL} />
       ) : (
-        <div className="pkp-card" style={{ padding: 28 }}>
+        <div className="pkp-card pkp-card--feature" style={{ padding: 28 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-500)' }}>Dues balance</div>

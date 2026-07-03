@@ -69,8 +69,11 @@ export default function LoginPage() {
 
   return (
     <AuthCard onSubmit={onSubmit}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-800, #1f2937)' }}>
-          {mode === 'signin' ? 'Sign in' : 'Create your account'}
+        <div>
+          <div className="pkp-auth-eyebrow">Chapter Members</div>
+          <h1 style={{ margin: '4px 0 0', fontFamily: 'var(--font-serif)', fontSize: 23, fontWeight: 600, letterSpacing: '-.01em', color: 'var(--ink-900)' }}>
+            {mode === 'signin' ? 'Sign in' : 'Create your account'}
+          </h1>
         </div>
 
         {!isSupabaseConfigured && (
@@ -101,10 +104,10 @@ export default function LoginPage() {
 
         <button
           type="submit" disabled={busy}
+          className="pkp-btn-primary"
           style={{
-            marginTop: 6, padding: '11px 14px', borderRadius: 10, border: 'none',
-            background: 'var(--primary-600, #1f5e3a)', color: '#fff', fontWeight: 600,
-            fontSize: 14, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1,
+            marginTop: 6, padding: '12px 14px', fontSize: 14,
+            cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1,
           }}
         >
           {busy ? 'Working…' : mode === 'signin' ? 'Sign in' : 'Create account'}

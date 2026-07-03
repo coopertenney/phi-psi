@@ -65,8 +65,10 @@ export function AppShell({ members, currentUser, children }: {
           <div>
             <div className="pkp-brand-name">Phi Kappa Psi</div>
             <div className="pkp-brand-sub">Cal Beta · Stanford</div>
+            <div className="pkp-brand-est">Est. 1852</div>
           </div>
         </div>
+        <div className="pkp-brand-rule" />
         <nav className="pkp-nav">
           {tabs.map((n) => {
             const active = pathname === n.href || (n.href === '/dashboard' && pathname === '/');
@@ -113,7 +115,10 @@ export function AppShell({ members, currentUser, children }: {
           <button className="pkp-hamburger" aria-label="Open menu" onClick={() => setNavOpen(true)}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
           </button>
-          <h1 className="pkp-title">{pageTitle}</h1>
+          <div className="pkp-masthead">
+            <span className="pkp-eyebrow">Cal Beta Chapter</span>
+            <h1 className="pkp-title">{pageTitle}</h1>
+          </div>
           <div className="pkp-topbar-actions">
             <SearchBox members={members} />
             {canSwitchPersona && (
