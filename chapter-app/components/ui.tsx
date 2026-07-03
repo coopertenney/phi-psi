@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { initials, tint, type BadgeTone } from '@/lib/format';
 import { icons } from './icons';
 
@@ -85,7 +85,7 @@ export function StatCards({ cards, cols = 3 }: {
   cards: { val: ReactNode; label: ReactNode; sub?: ReactNode }[]; cols?: number;
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gap: 16 }}>
+    <div className="pkp-stats" style={{ '--pkp-cols': cols } as CSSProperties}>
       {cards.map((c, i) => (
         <div key={i} className="pkp-stat">
           <div className="pkp-stat-val">{c.val}</div>

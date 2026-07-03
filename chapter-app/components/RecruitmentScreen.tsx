@@ -99,8 +99,6 @@ const CHIPS = [
 ] as const;
 type Filter = (typeof CHIPS)[number]['id'];
 
-const PNM_GRID = '2.2fr 1.4fr 1.2fr 1fr 32px';
-
 function ExecRecruitment({ pnms: initial, live = false, notesByPnm = {}, myRatings = {}, myVotes = {} }: { pnms: PnmRow[] } & LiveProps) {
   const router = useRouter();
   const [pnms, setPnms] = useState<PnmRow[]>(initial);
@@ -189,8 +187,8 @@ function ExecRecruitment({ pnms: initial, live = false, notesByPnm = {}, myRatin
         <AddButton label="Add PNM" onClick={() => setAdding(true)} />
       </div>
 
-      <div className="pkp-card" style={{ overflow: 'hidden' }}>
-        <div className="pkp-table-head" style={{ gridTemplateColumns: PNM_GRID }}>
+      <div className="pkp-card pkp-pnm-table" style={{ overflow: 'hidden' }}>
+        <div className="pkp-table-head">
           <div className="pkp-col-head">Prospect</div>
           <div className="pkp-col-head">Referred by</div>
           <div className="pkp-col-head">Rating</div>
@@ -198,7 +196,7 @@ function ExecRecruitment({ pnms: initial, live = false, notesByPnm = {}, myRatin
           <div />
         </div>
         {rows.map((p) => (
-          <div key={p.id} className="pkp-row" style={{ gridTemplateColumns: PNM_GRID }} onClick={() => setSelectedId(p.id)}>
+          <div key={p.id} className="pkp-row" onClick={() => setSelectedId(p.id)}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <Avatar name={p.fullName} size={36} />
               <div style={{ minWidth: 0 }}>
@@ -277,7 +275,7 @@ function MemberRecruitment({ pnms, live = false, notesByPnm = {}, myRatings = {}
 
       <Chips options={CHIPS} value={filter} onChange={setFilter} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 16 }}>
+      <div className="pkp-pnm-cards">
         {rows.map((p) => (
           <div key={p.id} className="pkp-card" style={{ padding: 16, cursor: 'pointer' }} onClick={() => setSelectedId(p.id)}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

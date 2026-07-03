@@ -97,9 +97,6 @@ function CheckoutBanner() {
 type ExtraMap = Record<string, Fine[]>;
 const unpaidExtra = (list: Fine[] | undefined) => (list ?? []).filter((f) => !f.paid).reduce((a, f) => a + f.amountCents, 0);
 
-// Columns for the dues table (exec only). Overrides the default roster grid.
-const FIN_GRID = '2.2fr 1.1fr 1.1fr 1.1fr 1fr 32px';
-
 const Check = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 6 9 17l-5-5" />
@@ -251,8 +248,8 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
         </div>
       </div>
 
-      <div className="pkp-card" style={{ overflow: 'hidden' }}>
-        <div className="pkp-table-head" style={{ gridTemplateColumns: FIN_GRID }}>
+      <div className="pkp-card pkp-fin-table" style={{ overflow: 'hidden' }}>
+        <div className="pkp-table-head">
           <div className="pkp-col-head">Brother</div>
           <div className="pkp-col-head pkp-r">Dues bal.</div>
           <div className="pkp-col-head pkp-r">Fines</div>
@@ -266,7 +263,7 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
           const fines = finesOf(m);
           const total = dues.balance + fines;
           return (
-            <div key={m.membershipId} className="pkp-row" style={{ gridTemplateColumns: FIN_GRID }} onClick={() => setSelected(m)}>
+            <div key={m.membershipId} className="pkp-row" onClick={() => setSelected(m)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                 <Avatar name={m.fullName} size={36} />
                 <div style={{ minWidth: 0 }}>

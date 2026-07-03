@@ -121,6 +121,14 @@ button { font: inherit; }
 /* Two-column content splits that collapse to one column on phones. */
 .pkp-grid-main { display:grid; grid-template-columns:1.5fr 1fr; }
 
+/* Summary stat row (--pkp-cols set inline per screen) and the two detail tables
+   that carry their own columns. Defined here — before the @media block below —
+   so the mobile overrides win on source order (equal specificity). */
+.pkp-stats { display:grid; grid-template-columns:repeat(var(--pkp-cols,3),1fr); gap:16px; }
+.pkp-fin-table .pkp-table-head, .pkp-fin-table .pkp-row { grid-template-columns:2.2fr 1.1fr 1.1fr 1.1fr 1fr 32px; }
+.pkp-pnm-table .pkp-table-head, .pkp-pnm-table .pkp-row { grid-template-columns:2.2fr 1.4fr 1.2fr 1fr 32px; }
+.pkp-pnm-cards { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+
 .pkp-topbar-actions { display:flex; align-items:center; gap:16px; }
 .pkp-hamburger { display:none; }
 .pkp-nav-scrim { display:none; }
@@ -163,6 +171,25 @@ button { font: inherit; }
   .pkp-members-list .pkp-row > :nth-child(2),
   .pkp-members-list .pkp-row > :nth-child(4),
   .pkp-members-list .pkp-row > :nth-child(5) { display:none; }
+
+  /* Summary stats: 2-up, and drop the vertical dividers (they'd land mid-grid
+     once the row wraps). */
+  .pkp-stats { grid-template-columns:repeat(2,1fr); gap:16px 18px; }
+  .pkp-stats .pkp-stat + .pkp-stat { border-left:none; padding-left:0; }
+
+  /* Finances dues + Recruitment pipeline tables collapse to the same tap-through
+     list as Members: name + one key figure + chevron; the rest lives in the
+     drawer. Finances keeps Total owed (col 4); Recruitment keeps Stage (col 4). */
+  .pkp-fin-table .pkp-table-head, .pkp-pnm-table .pkp-table-head { display:none; }
+  .pkp-fin-table .pkp-row, .pkp-pnm-table .pkp-row { grid-template-columns:1fr auto 20px; padding:13px 16px; gap:10px; }
+  .pkp-fin-table .pkp-row > :nth-child(2),
+  .pkp-fin-table .pkp-row > :nth-child(3),
+  .pkp-fin-table .pkp-row > :nth-child(5),
+  .pkp-pnm-table .pkp-row > :nth-child(2),
+  .pkp-pnm-table .pkp-row > :nth-child(3) { display:none; }
+
+  /* Recruitment PNM cards: one per row instead of two. */
+  .pkp-pnm-cards { grid-template-columns:1fr; }
 }
 
 /* ---------- generic ---------- */
