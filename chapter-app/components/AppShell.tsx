@@ -71,11 +71,21 @@ export function AppShell({ members, currentUser, children }: {
         <div className="pkp-brand-rule" />
         <nav className="pkp-nav">
           {tabs.map((n) => {
-            const active = pathname === n.href || (n.href === '/dashboard' && pathname === '/');
-            return (
-              <Link key={n.href} href={n.href} className={`pkp-nav-btn${active ? ' active' : ''}`} onClick={() => setNavOpen(false)}>
+            const external = 'external' in n && n.external;
+            const active = !external && (pathname === n.href || (n.href === '/dashboard' && pathname === '/'));
+            const content = (
+              <>
                 <span className="ico">{icons[n.id as IconName]}</span>
                 <span>{n.label}</span>
+              </>
+            );
+            return external ? (
+              <a key={n.href} href={n.href} target="_blank" rel="noopener noreferrer" className="pkp-nav-btn" onClick={() => setNavOpen(false)}>
+                {content}
+              </a>
+            ) : (
+              <Link key={n.href} href={n.href} className={`pkp-nav-btn${active ? ' active' : ''}`} onClick={() => setNavOpen(false)}>
+                {content}
               </Link>
             );
           })}

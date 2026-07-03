@@ -26,8 +26,9 @@ export const AUDIENCES: { id: Audience; label: string }[] = [
 ];
 
 // The nav tabs an admin can toggle. Dashboard is locked on so a group can never
-// be toggled into an empty app. `id` doubles as the icon key.
-export const NAV_TABS: { href: string; id: string; label: string; locked?: boolean }[] = [
+// be toggled into an empty app. `id` doubles as the icon key. `external` links
+// out (new tab) instead of routing internally — `href` is then a full URL.
+export const NAV_TABS: { href: string; id: string; label: string; locked?: boolean; external?: boolean }[] = [
   { href: '/dashboard', id: 'dashboard', label: 'Dashboard', locked: true },
   { href: '/members', id: 'members', label: 'Members' },
   { href: '/recruitment', id: 'recruitment', label: 'Recruitment' },
@@ -37,6 +38,7 @@ export const NAV_TABS: { href: string; id: string; label: string; locked?: boole
   { href: '/points', id: 'points', label: 'Points' },
   { href: '/announcements', id: 'announcements', label: 'Announcements' },
   { href: '/files', id: 'files', label: 'Files' },
+  { href: 'https://docs.google.com/spreadsheets/d/1R2aucgm_uYfEp4Nn2PALGDFpHxnbl6uKvY-5UdNC3LY/edit', id: 'menu', label: 'Menu', external: true },
 ];
 
 // admin & exec see exec-level content; member & new see the member views.

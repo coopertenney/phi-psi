@@ -37,6 +37,9 @@ export const icons = {
   files: (
     <Svg><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8l-2-2H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" /></Svg>
   ),
+  menu: (
+    <Svg><rect x={3} y={3} width={18} height={18} rx={2} /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /></Svg>
+  ),
   search: (<Svg size={16}><circle cx={11} cy={11} r={8} /><path d="m21 21-4.3-4.3" /></Svg>),
   plus: (<Svg size={16}><path d="M5 12h14" /><path d="M12 5v14" /></Svg>),
   chevron: (<Svg size={18}><path d="m9 18 6-6-6-6" /></Svg>),
