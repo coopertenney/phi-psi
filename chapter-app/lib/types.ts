@@ -24,6 +24,7 @@ export interface MemberFlag {
 export interface MemberRow {
   membershipId: string;
   fullName: string;
+  avatarUrl?: string | null;  // uploaded profile photo (public URL); absent/null → initials
   email: string;
   phone: string;
   position: string | null;   // office title; null = no office

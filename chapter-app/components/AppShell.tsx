@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { icons, type IconName } from './icons';
-import { Avatar } from './ui';
+import { AvatarUpload } from './AvatarUpload';
 import { SearchBox } from './SearchBox';
 import { AuthButton } from './AuthButton';
 import { useApp } from './Providers';
@@ -28,7 +28,7 @@ const PAGE: Record<string, string> = {
 
 export function AppShell({ members, currentUser, children }: {
   members: MemberRow[];
-  currentUser: { fullName: string; title: string } | null;
+  currentUser: { fullName: string; title: string; avatarUrl?: string | null } | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -42,8 +42,8 @@ export function AppShell({ members, currentUser, children }: {
   const pageTitle = PAGE[pathname] ?? 'Cal Beta';
   // Show the real signed-in member; fall back to the demo user only in mock mode.
   const user = currentUser
-    ? { name: currentUser.fullName, title: currentUser.title }
-    : MOCK_USER[persona];
+    ? { name: currentUser.fullName, title: currentUser.title, avatarUrl: currentUser.avatarUrl ?? null }
+    : { ...MOCK_USER[persona], avatarUrl: null as string | null };
 
   // Admins see every tab plus the Access screen; everyone else sees only the
   // tabs enabled for their audience.
@@ -85,7 +85,7 @@ export function AppShell({ members, currentUser, children }: {
             on desktop move into the drawer, where there's room. */}
         <div className="pkp-drawer-account">
           <div className="pkp-drawer-user">
-            <Avatar name={user.name} size={34} />
+            <AvatarUpload name={user.name} src={user.avatarUrl} size={34} />
             <div style={{ lineHeight: 1.15, minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--pkp-side-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
               <div style={{ fontSize: 11.5, color: 'var(--pkp-side-muted)' }}>{user.title}</div>
@@ -129,7 +129,7 @@ export function AppShell({ members, currentUser, children }: {
               </div>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-              <Avatar name={user.name} size={38} />
+              <AvatarUpload name={user.name} src={user.avatarUrl} size={38} />
               <div style={{ lineHeight: 1.15 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-900)' }}>{user.name}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>{user.title}</div>

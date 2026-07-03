@@ -205,6 +205,7 @@ export const mockMembers: MemberRow[] = SEED.map((s, i) => {
   return {
     membershipId: id,
     fullName: s.name,
+    avatarUrl: null,
     email: s.email,
     phone: s.phone,
     position: s.position,

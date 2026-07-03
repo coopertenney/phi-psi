@@ -43,6 +43,7 @@ export async function getMembers(): Promise<MemberRow[]> {
     return {
       membershipId: s.membership_id,
       fullName: s.full_name,
+      avatarUrl: s.avatar_url ?? null,
       email: emailById.get(s.membership_id) ?? '',
       phone: s.phone ?? '',
       position: s.position,
@@ -74,6 +75,7 @@ export async function getCurrentUser(): Promise<
   {
     fullName: string;
     title: string;
+    avatarUrl: string | null;
     accessRole: 'admin' | 'exec' | 'member' | null;
     status: 'active' | 'new' | 'inactive' | null;
   } | null
@@ -85,14 +87,14 @@ export async function getCurrentUser(): Promise<
 
   // Look up by auth_user_id (exact, indexed — what RLS itself matches on) rather
   // than a fuzzy email-embed filter.
-  const { data: prof } = await sb.from('profiles').select('id, full_name').eq('auth_user_id', user.id).maybeSingle();
-  if (!prof) return { fullName: user.email ?? 'Member', title: 'Not on roster', accessRole: null, status: null };
+  const { data: prof } = await sb.from('profiles').select('id, full_name, avatar_url').eq('auth_user_id', user.id).maybeSingle();
+  if (!prof) return { fullName: user.email ?? 'Member', title: 'Not on roster', avatarUrl: null, accessRole: null, status: null };
 
   const { data: mem } = await sb.from('memberships').select('position, access_role, status').eq('profile_id', prof.id).maybeSingle();
   const accessRole = (mem?.access_role as 'admin' | 'exec' | 'member' | undefined) ?? null;
   const status = (mem?.status as 'active' | 'new' | 'inactive' | undefined) ?? null;
   const title = mem?.position ?? accessRoleLabel(accessRole);
-  return { fullName: prof.full_name, title, accessRole, status };
+  return { fullName: prof.full_name, title, avatarUrl: prof.avatar_url ?? null, accessRole, status };
 }
 
 export async function getStats(): Promise<ChapterStats> {
