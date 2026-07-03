@@ -13,7 +13,7 @@ import { NOW } from '@/lib/engagement';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
 import { CHAPTER_ID } from '@/lib/chapter';
 import { useApp } from './Providers';
-import { Avatar, Badge, Chips, StatCards } from './ui';
+import { Avatar, Badge, Chips, StatCards, CloseButton, AddButton } from './ui';
 import { icons } from './icons';
 import { Switch } from './AccessScreen';
 import { Modal, ModalActions, Field, Select, FieldRow, downloadCsv } from './form';
@@ -247,9 +247,7 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
               members.map((m) => { const d = duesFor(m); const f = finesOf(m); return [m.fullName, m.roleLabel, (d.balance / 100).toFixed(2), (f / 100).toFixed(2), ((d.balance + f) / 100).toFixed(2), m.duesState]; }))}>
             Export
           </button>
-          <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 18px', fontSize: 13.5, boxShadow: 'var(--shadow-sm)' }} onClick={() => setCharging('pick')}>
-            <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Add charge
-          </button>
+          <AddButton label="Add charge" onClick={() => setCharging('pick')} />
         </div>
       </div>
 
@@ -358,7 +356,7 @@ function FinanceDrawer({ member: m, extra, onAddFine, onClose }: {
             <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · {CURRENT_QUARTER_LABEL}</div>
             <div style={{ marginTop: 8 }}><Badge tone={db.tone}>{db.label}</Badge></div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+          <CloseButton onClose={onClose} />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>

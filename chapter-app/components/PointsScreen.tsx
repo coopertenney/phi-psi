@@ -9,7 +9,7 @@ import { entriesFor, weekChange, rewardPunishmentSplit, memberPointTotal, pendin
 import { currentMember, MOCK_USER } from '@/lib/session';
 import { logPoints, updatePointItem, requestPoints, approvePointEntry, rejectPointEntry, withdrawPointRequest } from '@/app/points/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge } from './ui';
+import { Avatar, Badge, CloseButton } from './ui';
 import { icons } from './icons';
 import { Modal, ModalActions, Field, Select } from './form';
 
@@ -135,7 +135,7 @@ function PointValuesDrawer({ items, onClose, onSave }: {
               {editable ? 'Edit a value and tab away to save · applies to future awards only' : `Accountability catalog · floor of ${POINT_FLOOR}`}
             </div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+          <CloseButton onClose={onClose} />
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {section('Rewards', rewards)}

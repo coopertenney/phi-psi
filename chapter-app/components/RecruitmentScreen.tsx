@@ -9,7 +9,7 @@ import { FUNNEL, STAGE_META, nextStage, pnmNotes } from '@/lib/recruitment';
 import { MOCK_USER } from '@/lib/session';
 import { createPnm, setPnmStage, ratePnm, votePnm, addPnmNote, type PnmInput } from '@/app/recruitment/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge, Chips, StatCards } from './ui';
+import { Avatar, Badge, Chips, StatCards, CloseButton, AddButton } from './ui';
 import { icons } from './icons';
 import { Modal, ModalActions, Field, Select, FieldRow } from './form';
 
@@ -186,9 +186,7 @@ function ExecRecruitment({ pnms: initial, live = false, notesByPnm = {}, myRatin
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <Chips options={CHIPS} value={filter} onChange={setFilter} />
-        <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 18px', fontSize: 13.5, boxShadow: 'var(--shadow-sm)' }} onClick={() => setAdding(true)}>
-          <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Add PNM
-        </button>
+        <AddButton label="Add PNM" onClick={() => setAdding(true)} />
       </div>
 
       <div className="pkp-card" style={{ overflow: 'hidden' }}>
@@ -378,7 +376,7 @@ function PnmDrawer({ pnm: p, exec, live = false, notesByPnm = {}, myRatings = {}
             <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{p.standing} · {p.major}</div>
             <div style={{ marginTop: 8 }}><StageBadge stage={p.stage} /></div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+          <CloseButton onClose={onClose} />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getBrowserSupabase, isSupabaseConfigured } from '@/lib/supabase/browser';
+import { AuthCard, authInputStyle as inputStyle } from '@/components/AuthCard';
 
 type Mode = 'signin' | 'signup';
 
@@ -67,23 +68,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg-50, #f7f8f6)' }}>
-      <form
-        onSubmit={onSubmit}
-        style={{
-          width: 360, padding: 32, borderRadius: 16, background: 'var(--surface, #fff)',
-          border: '1px solid var(--line-200, #e6e8e3)', boxShadow: '0 8px 30px rgba(0,0,0,0.06)',
-          display: 'flex', flexDirection: 'column', gap: 14,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
-          <img src="/crest.png" alt="" width={40} height={40} />
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 16 }}>Phi Kappa Psi</div>
-            <div style={{ fontSize: 12.5, color: 'var(--ink-500, #6b7280)' }}>Cal Beta · Stanford</div>
-          </div>
-        </div>
-
+    <AuthCard onSubmit={onSubmit}>
         <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-800, #1f2937)' }}>
           {mode === 'signin' ? 'Sign in' : 'Create your account'}
         </div>
@@ -132,12 +117,6 @@ export default function LoginPage() {
         >
           {mode === 'signin' ? 'New here? Create an account' : 'Already have an account? Sign in'}
         </button>
-      </form>
-    </div>
+    </AuthCard>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', marginTop: 6, padding: '10px 12px', borderRadius: 10,
-  border: '1px solid var(--line-200, #d8dad4)', fontSize: 14, fontWeight: 400,
-};

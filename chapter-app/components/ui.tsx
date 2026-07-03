@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { initials, tint, type BadgeTone } from '@/lib/format';
+import { icons } from './icons';
 
 export function Avatar({ name, size = 36, fontSize }: { name: string; size?: number; fontSize?: number }) {
   const t = tint(name);
@@ -12,6 +13,22 @@ export function Avatar({ name, size = 36, fontSize }: { name: string; size?: num
 
 export function Badge({ tone, children }: { tone: BadgeTone; children: React.ReactNode }) {
   return <span className={`pkp-badge ${tone}`}>{children}</span>;
+}
+
+// The round ✕ that closes every detail drawer (matches the Modal's close).
+export function CloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button onClick={onClose} aria-label="Close" style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+  );
+}
+
+// The primary "＋ Add …" button that heads each roster/pipeline screen.
+export function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 18px', fontSize: 13.5, boxShadow: 'var(--shadow-sm)' }} onClick={onClick}>
+      <span style={{ display: 'inline-flex' }}>{icons.plus}</span>{label}
+    </button>
+  );
 }
 
 // Filter-chip row: the `.pkp-chips` group used above every roster/pipeline table.

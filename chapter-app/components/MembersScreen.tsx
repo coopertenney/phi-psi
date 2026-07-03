@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemberRow, MemberStatus, FlagSeverity } from '@/lib/types';
 import { money, statusBadge, duesBadge, type BadgeTone } from '@/lib/format';
-import { Avatar, Badge, Chips } from './ui';
+import { Avatar, Badge, Chips, CloseButton, AddButton } from './ui';
 import { icons } from './icons';
 import { Modal, ModalActions, Field, Select, FieldRow, TextArea, parseCsv, downloadCsv } from './form';
 import { useApp } from './Providers';
@@ -77,9 +77,7 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
           {isAdmin && <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={() => setRollingOver(true)}>Start new year</button>}
           <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={() => setImporting(true)}>Import class</button>
           <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={exportCsv}>Export</button>
-          <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 18px', fontSize: 13.5, boxShadow: 'var(--shadow-sm)' }} onClick={() => setAdding(true)}>
-            <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Add member
-          </button>
+          <AddButton label="Add member" onClick={() => setAdding(true)} />
         </div>
       </div>
 
@@ -153,7 +151,7 @@ function MemberDrawer({ member: m, onClose, onEdit }: { member: MemberRow; onClo
             <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · Class of {m.classYear}</div>
             <div style={{ marginTop: 8 }}><Badge tone={sb.tone}>{sb.label}</Badge></div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+          <CloseButton onClose={onClose} />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>

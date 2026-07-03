@@ -9,7 +9,7 @@ import { NOW } from '@/lib/engagement';
 import { currentMember } from '@/lib/session';
 import { createEvent, updateEvent, deleteEvent, setRsvp, type EventInput } from '@/app/socials/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge } from './ui';
+import { Avatar, Badge, CloseButton, AddButton } from './ui';
 import { icons } from './icons';
 import { Modal, Field, Select, TextArea, FieldRow, Checkbox } from './form';
 
@@ -217,9 +217,7 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
           <h3 className="pkp-h3">Socials</h3>
           <div style={{ fontSize: 12.5, color: 'var(--ink-500)', marginTop: 2 }}>Mixers, formals & brotherhood nights</div>
         </div>
-        <button className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 40, padding: '0 18px', fontSize: 13.5, boxShadow: 'var(--shadow-sm)' }} onClick={() => setForm('new')}>
-          <span style={{ display: 'inline-flex' }}>{icons.plus}</span>Create social
-        </button>
+        <AddButton label="Create social" onClick={() => setForm('new')} />
       </div>
 
       {upcoming.length === 0 && (
@@ -370,7 +368,7 @@ function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
               {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
             </div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
+          <CloseButton onClose={onClose} />
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
