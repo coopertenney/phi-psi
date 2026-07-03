@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { icons, type IconName } from './icons';
@@ -31,7 +32,10 @@ export function AppShell({ members, currentUser, children }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { persona, setPersona, isAdmin, tabAccess } = useApp();
+  const { persona, setPersona, isAdmin, canSwitchPersona, tabAccess } = useApp();
+  // Mobile nav drawer. Closes on any route change so tapping a link dismisses it.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => setNavOpen(false), [pathname]);
   // These auth screens render on their own, without the sidebar/topbar chrome.
   // (Hooks above must run first — Rules of Hooks — so this return comes after.)
   if (pathname === '/login' || pathname === '/set-password') return <>{children}</>;
@@ -49,7 +53,10 @@ export function AppShell({ members, currentUser, children }: {
     : NAV_TABS.filter((t) => (aud ? tabAccess[aud][t.href] : true));
 
   return (
-    <div className="pkp-app">
+    <div className={`pkp-app${navOpen ? ' nav-open' : ''}`}>
+      {/* Tapping the dimmed backdrop closes the mobile drawer. Desktop hides it. */}
+      <div className="pkp-nav-scrim" onClick={() => setNavOpen(false)} aria-hidden />
+
       <aside className="pkp-sidebar">
         <div className="pkp-brand">
           <img className="pkp-crest" src="/crest.png" alt="Phi Kappa Psi coat of arms" />
@@ -62,13 +69,34 @@ export function AppShell({ members, currentUser, children }: {
           {tabs.map((n) => {
             const active = pathname === n.href || (n.href === '/dashboard' && pathname === '/');
             return (
-              <Link key={n.href} href={n.href} className={`pkp-nav-btn${active ? ' active' : ''}`}>
+              <Link key={n.href} href={n.href} className={`pkp-nav-btn${active ? ' active' : ''}`} onClick={() => setNavOpen(false)}>
                 <span className="ico">{icons[n.id as IconName]}</span>
                 <span>{n.label}</span>
               </Link>
             );
           })}
         </nav>
+
+        {/* Mobile only: the identity + persona + sign-out that live in the topbar
+            on desktop move into the drawer, where there's room. */}
+        <div className="pkp-drawer-account">
+          <div className="pkp-drawer-user">
+            <Avatar name={user.name} size={34} />
+            <div style={{ lineHeight: 1.15, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--pkp-side-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--pkp-side-muted)' }}>{user.title}</div>
+            </div>
+          </div>
+          {canSwitchPersona && (
+            <div className="pkp-seg" title="View as" style={{ marginTop: 10 }}>
+              {PERSONAS.map((p) => (
+                <button key={p.id} className={persona === p.id ? 'on' : ''} onClick={() => setPersona(p.id)}>{p.label}</button>
+              ))}
+            </div>
+          )}
+          <div style={{ marginTop: 10 }}><AuthButton /></div>
+        </div>
+
         <div className="pkp-side-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--success-500)' }} />
@@ -80,14 +108,19 @@ export function AppShell({ members, currentUser, children }: {
 
       <div className="pkp-main-col">
         <header className="pkp-topbar">
+          <button className="pkp-hamburger" aria-label="Open menu" onClick={() => setNavOpen(true)}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+          </button>
           <h1 className="pkp-title">{pageTitle}</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div className="pkp-topbar-actions">
             <SearchBox members={members} />
-            <div className="pkp-seg" title="View as">
-              {PERSONAS.map((p) => (
-                <button key={p.id} className={persona === p.id ? 'on' : ''} onClick={() => setPersona(p.id)}>{p.label}</button>
-              ))}
-            </div>
+            {canSwitchPersona && (
+              <div className="pkp-seg" title="View as">
+                {PERSONAS.map((p) => (
+                  <button key={p.id} className={persona === p.id ? 'on' : ''} onClick={() => setPersona(p.id)}>{p.label}</button>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
               <Avatar name={user.name} size={38} />
               <div style={{ lineHeight: 1.15 }}>

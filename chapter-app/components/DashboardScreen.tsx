@@ -137,7 +137,7 @@ function ExecDashboard({ members, events, announcements }: Props) {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, alignItems: 'start' }}>
+      <div className="pkp-grid-main" style={{ gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="pkp-card" style={{ padding: 20 }}>
             <h3 className="pkp-h3" style={{ marginBottom: 14 }}>Upcoming events</h3>

@@ -84,6 +84,41 @@ button { font: inherit; }
 .pkp-swatch { width:22px; height:22px; border-radius:50%; cursor:pointer; padding:0; border:2px solid rgba(20,20,19,.12); }
 .pkp-swatch.on { border-color:var(--ink-900); box-shadow:0 0 0 2px var(--cream-50); }
 
+/* Two-column content splits that collapse to one column on phones. Use this
+   class instead of an inline gridTemplateColumns so the mobile rule can apply. */
+.pkp-grid-main { display:grid; grid-template-columns:1.5fr 1fr; }
+
+/* Desktop defaults for the responsive shell pieces (overridden on mobile). */
+.pkp-topbar-actions { display:flex; align-items:center; gap:16px; }
+.pkp-hamburger { display:none; }
+.pkp-nav-scrim { display:none; }
+.pkp-drawer-account { display:none; }
+
+/* ---------- mobile: sidebar becomes a slide-in drawer ---------- */
+@media (max-width: 860px) {
+  .pkp-sidebar {
+    position:fixed; top:0; left:0; z-index:60; height:100%; width:270px;
+    transform:translateX(-100%); transition:transform .22s ease;
+  }
+  .pkp-app.nav-open .pkp-sidebar { transform:translateX(0); box-shadow:2px 0 28px rgba(0,0,0,.22); }
+  .pkp-nav-scrim { display:block; position:fixed; inset:0; z-index:50; background:rgba(20,20,19,.42); opacity:0; pointer-events:none; transition:opacity .22s ease; }
+  .pkp-app.nav-open .pkp-nav-scrim { opacity:1; pointer-events:auto; }
+
+  .pkp-hamburger { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; margin-left:-8px; border:none; background:transparent; color:var(--ink-800); cursor:pointer; border-radius:var(--radius-md); flex-shrink:0; }
+  .pkp-topbar { height:60px; padding:0 14px; gap:8px; }
+  .pkp-title { font-size:19px; }
+  .pkp-topbar-actions { display:none; }
+  .pkp-main { padding:16px; }
+
+  .pkp-drawer-account { display:block; margin-top:auto; padding-top:14px; border-top:1px solid var(--pkp-side-border); }
+  .pkp-drawer-user { display:flex; align-items:center; gap:10px; }
+  .pkp-drawer-account .pkp-seg { width:100%; }
+  .pkp-drawer-account .pkp-seg button { flex:1; padding:6px 8px; }
+  .pkp-side-card { margin-top:14px; }
+
+  .pkp-grid-main { grid-template-columns:1fr; gap:14px !important; }
+}
+
 /* ---------- generic ---------- */
 .pkp-card { background:var(--white); border:1px solid var(--cream-300); border-radius:var(--radius-lg); box-shadow:none; }
 .pkp-h3 { margin:0; font-family:var(--font-serif); font-size:18px; font-weight:600; color:var(--ink-900); }
