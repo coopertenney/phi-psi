@@ -9,7 +9,7 @@ import { entriesFor, weekChange, rewardPunishmentSplit, memberPointTotal, pendin
 import { currentMember, MOCK_USER } from '@/lib/session';
 import { logPoints, updatePointItem, requestPoints, approvePointEntry, rejectPointEntry, withdrawPointRequest } from '@/app/points/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge, CloseButton } from './ui';
+import { Avatar, Badge, Drawer } from './ui';
 import { icons } from './icons';
 import { Modal, ModalActions, Field, Select } from './form';
 
@@ -125,25 +125,22 @@ function PointValuesDrawer({ items, onClose, onSave }: {
     </div>
   );
   return (
-    <>
-      <div className="pkp-scrim" onClick={onClose} />
-      <div className="pkp-drawer">
-        <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 16, background: 'var(--white)' }}>
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, color: 'var(--ink-900)' }}>Point values</h2>
-            <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 3 }}>
-              {editable ? 'Edit a value and tab away to save · applies to future awards only' : `Accountability catalog · floor of ${POINT_FLOOR}`}
-            </div>
+    <Drawer
+      onClose={onClose}
+      bodyGap={16}
+      header={
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, color: 'var(--ink-900)' }}>Point values</h2>
+          <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 3 }}>
+            {editable ? 'Edit a value and tab away to save · applies to future awards only' : `Accountability catalog · floor of ${POINT_FLOOR}`}
           </div>
-          <CloseButton onClose={onClose} />
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      }
+    >
           {section('Rewards', rewards)}
           {section('Discretionary (GP/VP sets value)', discretionary)}
           {section('Punishments', punishments)}
-        </div>
-      </div>
-    </>
+    </Drawer>
   );
 }
 

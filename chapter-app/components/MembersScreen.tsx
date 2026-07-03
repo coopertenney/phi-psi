@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MemberRow, MemberStatus, FlagSeverity } from '@/lib/types';
 import { money, statusBadge, duesBadge, type BadgeTone } from '@/lib/format';
-import { Avatar, Badge, Chips, CloseButton, AddButton } from './ui';
+import { Avatar, Badge, Chips, AddButton, Drawer } from './ui';
 import { icons } from './icons';
 import { Modal, ModalActions, Field, Select, FieldRow, TextArea, parseCsv, downloadCsv } from './form';
 import { useApp } from './Providers';
@@ -141,20 +141,21 @@ function MemberDrawer({ member: m, onClose, onEdit }: { member: MemberRow; onClo
   );
 
   return (
-    <>
-      <div className="pkp-scrim" onClick={onClose} />
-      <div className="pkp-drawer">
-        <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 16, background: 'var(--white)' }}>
-          <Avatar name={m.fullName} size={58} fontSize={20} />
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</h2>
-            <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · Class of {m.classYear}</div>
-            <div style={{ marginTop: 8 }}><Badge tone={sb.tone}>{sb.label}</Badge></div>
-          </div>
-          <CloseButton onClose={onClose} />
+    <Drawer
+      onClose={onClose}
+      header={<>
+        <Avatar name={m.fullName} size={58} fontSize={20} />
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</h2>
+          <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · Class of {m.classYear}</div>
+          <div style={{ marginTop: 8 }}><Badge tone={sb.tone}>{sb.label}</Badge></div>
         </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      </>}
+      footer={<>
+        <a className="pkp-btn-primary" href={`mailto:${m.email}`} style={{ flex: 1, height: 42, fontSize: 13.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Message</a>
+        <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onEdit}>Edit profile</button>
+      </>}
+    >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="pkp-card" style={{ padding: 14 }}>
               <div className="pkp-mono" style={{ fontSize: 22, fontWeight: 600, color: 'var(--pkp-accent)', lineHeight: 1 }}>{m.points}</div>
@@ -216,14 +217,7 @@ function MemberDrawer({ member: m, onClose, onEdit }: { member: MemberRow; onClo
               ))}
             </div>
           </div>
-        </div>
-
-        <div style={{ padding: '16px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10 }}>
-          <a className="pkp-btn-primary" href={`mailto:${m.email}`} style={{ flex: 1, height: 42, fontSize: 13.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Message</a>
-          <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onEdit}>Edit profile</button>
-        </div>
-      </div>
-    </>
+    </Drawer>
   );
 }
 

@@ -9,7 +9,7 @@ import { NOW } from '@/lib/engagement';
 import { currentMember } from '@/lib/session';
 import { createEvent, updateEvent, deleteEvent, setRsvp, type EventInput } from '@/app/socials/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge, CloseButton, AddButton, MiniStat } from './ui';
+import { Avatar, Badge, AddButton, MiniStat, Drawer } from './ui';
 import { icons } from './icons';
 import { Modal, Field, Select, TextArea, FieldRow, Checkbox } from './form';
 
@@ -352,23 +352,22 @@ function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
   );
 
   return (
-    <>
-      <div className="pkp-scrim" onClick={onClose} />
-      <div className="pkp-drawer">
-        <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 14, background: 'var(--white)' }}>
-          <DateBlock iso={e.startsAt} muted={past} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, color: 'var(--ink-900)', lineHeight: 1.15 }}>{e.title}</h2>
-            <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 4 }}>{relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)}</div>
-            <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <Badge tone={tm.tone}>{tm.label}</Badge>
-              {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
-            </div>
+    <Drawer
+      onClose={onClose}
+      headerGap={14}
+      header={<>
+        <DateBlock iso={e.startsAt} muted={past} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, color: 'var(--ink-900)', lineHeight: 1.15 }}>{e.title}</h2>
+          <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 4 }}>{relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)}</div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <Badge tone={tm.tone}>{tm.label}</Badge>
+            {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
           </div>
-          <CloseButton onClose={onClose} />
         </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      </>}
+      footer={<button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onEdit}>Edit social</button>}
+    >
           {e.description && <div style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.6 }}>{e.description}</div>}
 
           <div className="pkp-card" style={{ padding: 16 }}>
@@ -413,13 +412,7 @@ function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
               })}
             </div>
           </div>
-        </div>
-
-        <div style={{ padding: '16px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10 }}>
-          <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onEdit}>Edit social</button>
-        </div>
-      </div>
-    </>
+    </Drawer>
   );
 }
 
