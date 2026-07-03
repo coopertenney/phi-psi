@@ -125,21 +125,7 @@ const topFlag = (m: MemberRow): FlagSeverity =>
   m.flags.some((f) => f.severity === 'danger') ? 'danger'
   : m.flags.some((f) => f.severity === 'warning') ? 'warning' : 'info';
 
-function ExecDashboard({ members, stats: s, events, announcements }: Props) {
-  // Dues figures come from the live chapter_stats view (real dues_charges +
-  // payments), so the headline matches the database, not a flat per-quarter
-  // constant. (Fines aren't modeled in the schema yet, so they're omitted.)
-  const collected = s.collectedCents;
-  const target = s.targetCents;
-  const duesOutstanding = Math.max(0, target - collected);
-
-  const cards = [
-    { val: String(s.activeMembers), top: 'var(--hunter-500)', label: 'Active brothers', sub: `of ${s.totalMembers} initiated` },
-    { val: `${target ? Math.round((collected / target) * 100) : 0}%`, top: 'var(--pkp-primary)', label: 'Dues collected', sub: `${money(collected)} of ${money(target)}` },
-    { val: `${s.avgAttendancePct}%`, top: 'var(--info-500)', label: 'Avg attendance', sub: 'last 12 meetings' },
-    { val: money(duesOutstanding), top: 'var(--warning-500)', label: 'Outstanding', sub: `${money(duesOutstanding)} in unpaid dues` },
-  ];
-
+function ExecDashboard({ members, events, announcements }: Props) {
   const next = upcomingEvents(events).slice(0, 4);
   const leaders = [...members].sort((a, b) => b.points - a.points).slice(0, 5);
   // Clamp to the top positive total — points can be ≤0 (−5 floor), so a negative
@@ -151,16 +137,6 @@ function ExecDashboard({ members, stats: s, events, announcements }: Props) {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
-        {cards.map((c) => (
-          <div key={c.label} className="pkp-stat">
-            <div className="pkp-stat-val">{c.val}</div>
-            <div className="pkp-stat-label">{c.label}</div>
-            <div className="pkp-stat-sub">{c.sub}</div>
-          </div>
-        ))}
-      </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16, alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="pkp-card" style={{ padding: 20 }}>
