@@ -32,7 +32,8 @@ export function AppShell({ members, currentUser, children }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { persona, setPersona, isAdmin, canSwitchPersona, tabAccess } = useApp();
+  const { persona, setPersona, isAdmin, tabAccess } = useApp();
+  const canSwitchPersona = isAdmin; // only admins get the "view as" persona toggle
   // Mobile nav drawer. Closes on any route change so tapping a link dismisses it.
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => setNavOpen(false), [pathname]);

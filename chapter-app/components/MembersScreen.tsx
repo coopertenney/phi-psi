@@ -89,7 +89,7 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
         </div>
       </div>
 
-      <div className="pkp-card" style={{ overflow: 'hidden' }}>
+      <div className="pkp-card pkp-members-list" style={{ overflow: 'hidden' }}>
         <div className="pkp-table-head">
           <div className="pkp-col-head">Brother</div>
           <div className="pkp-col-head">Role</div>
