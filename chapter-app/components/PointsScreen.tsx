@@ -7,7 +7,7 @@ import { relativeDay } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { entriesFor, weekChange, rewardPunishmentSplit, memberPointTotal, POINT_FLOOR } from '@/lib/points';
 import { currentMember } from '@/lib/session';
-import { logPoints } from '@/app/points/actions';
+import { logPoints, updatePointItem } from '@/app/points/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 import { icons } from './icons';
@@ -35,11 +35,73 @@ export function PointsScreen({ live = false, ...props }: Props) {
 
 /* ─────────────────────────── Shared: catalog drawer ─────────────────────────── */
 
-function PointValuesDrawer({ items, onClose }: { items: PointItem[]; onClose: () => void }) {
+// Coerce a raw input to a catalog-legal value: an integer whose sign matches the
+// item's kind. Downstream code (rewardPunishmentSplit, ptColor) keys off the
+// SIGN, not `kind`, so a reward must stay ≥0 and a punishment ≤0 — otherwise a
+// mistyped punishment would render green and count as earned when logged.
+function coercePoints(raw: string, kind: PointItem['kind']): number | null {
+  const n = Math.trunc(Number(raw));
+  if (raw.trim() === '' || !Number.isFinite(n)) return null;
+  const mag = Math.abs(n);
+  return kind === 'punishment' ? -mag : mag;
+}
+
+function PointValuesDrawer({ items, onClose, onSave }: {
+  items: PointItem[];
+  onClose: () => void;
+  // Present → exec can edit fixed values. Persists one item; resolves when saved.
+  onSave?: (itemId: string, points: number) => Promise<void> | void;
+}) {
+  const editable = !!onSave;
+  // Draft text per item, keyed by id. Undefined = untouched (show catalog value).
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+
   const rewards = items.filter((i) => i.kind === 'reward' && !i.discretionary).sort((a, b) => b.points - a.points);
   const discretionary = items.filter((i) => i.discretionary);
   const punishments = items.filter((i) => i.kind === 'punishment').sort((a, b) => b.points - a.points);
-  const row = (i: PointItem) => (
+
+  const commit = async (i: PointItem) => {
+    const text = draft[i.id];
+    if (text === undefined) return;                 // untouched
+    const next = coercePoints(text, i.kind);
+    if (next === null || next === i.points) {        // invalid or unchanged → revert
+      setDraft(({ [i.id]: _, ...rest }) => rest);
+      return;
+    }
+    setSavingId(i.id);
+    try {
+      await onSave!(i.id, next);
+      setDraft(({ [i.id]: _, ...rest }) => rest);    // clear draft; parent state now holds it
+    } catch (err: any) {
+      alert(err?.message ?? 'Could not save.');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const editRow = (i: PointItem) => {
+    const val = draft[i.id] ?? String(i.points);
+    return (
+      <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '7px 0', borderTop: '1px solid var(--cream-200)' }}>
+        <span style={{ fontSize: 13, color: 'var(--ink-700)' }}>{i.label}</span>
+        <input
+          className="pkp-mono" type="number" step={1} value={val}
+          disabled={savingId === i.id}
+          onChange={(e) => setDraft((d) => ({ ...d, [i.id]: e.target.value }))}
+          onBlur={() => commit(i)}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          style={{
+            width: 62, flexShrink: 0, textAlign: 'right', fontSize: 13, fontWeight: 600,
+            padding: '5px 8px', borderRadius: 8, border: '1px solid var(--cream-400)',
+            background: 'var(--white)', color: ptColor(i.points),
+          }}
+        />
+      </div>
+    );
+  };
+
+  const readRow = (i: PointItem) => (
     <div key={i.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '8px 0', borderTop: '1px solid var(--cream-200)' }}>
       <span style={{ fontSize: 13, color: 'var(--ink-700)' }}>{i.label}</span>
       <span className="pkp-mono" style={{ fontSize: 13, fontWeight: 600, flexShrink: 0, color: i.discretionary ? 'var(--ink-400)' : ptColor(i.points) }}>
@@ -47,6 +109,10 @@ function PointValuesDrawer({ items, onClose }: { items: PointItem[]; onClose: ()
       </span>
     </div>
   );
+
+  // Discretionary items have no fixed value (exec sets it per entry) — never editable here.
+  const row = (i: PointItem) => (editable && !i.discretionary ? editRow(i) : readRow(i));
+
   const section = (title: string, list: PointItem[]) => (
     <div className="pkp-card" style={{ padding: 16 }}>
       <div className="pkp-col-head" style={{ marginBottom: 4 }}>{title}</div>
@@ -60,7 +126,9 @@ function PointValuesDrawer({ items, onClose }: { items: PointItem[]; onClose: ()
         <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 16, background: 'var(--white)' }}>
           <div style={{ flex: 1 }}>
             <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, color: 'var(--ink-900)' }}>Point values</h2>
-            <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 3 }}>Accountability catalog · floor of {POINT_FLOOR}</div>
+            <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 3 }}>
+              {editable ? 'Edit a value and tab away to save · applies to future awards only' : `Accountability catalog · floor of ${POINT_FLOOR}`}
+            </div>
           </div>
           <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid var(--cream-400)', background: 'var(--white)', color: 'var(--ink-500)', cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>✕</button>
         </div>
@@ -76,9 +144,23 @@ function PointValuesDrawer({ items, onClose }: { items: PointItem[]; onClose: ()
 
 /* ─────────────────────────── Exec: leaderboard + log ─────────────────────────── */
 
-function ExecPoints({ members, entries, items, onLog, live = false }: Props & { onLog: (e: PointEntry) => void }) {
+function ExecPoints({ members, entries, items: itemsProp, onLog, live = false }: Props & { onLog: (e: PointEntry) => void }) {
+  const router = useRouter();
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [logging, setLogging] = useState(false);
+  const [items, setItems] = useState<PointItem[]>(itemsProp);
+  useEffect(() => setItems(itemsProp), [itemsProp]); // follow server refreshes
+
+  // Persist a catalog value edit (exec-only; RLS is the real gate). Optimistic:
+  // update local state so the drawer + Log modal reflect it immediately; in live
+  // mode also write to Supabase and refresh so a reload shows the same.
+  const saveItem = async (itemId: string, points: number) => {
+    setItems((xs) => xs.map((x) => (x.id === itemId ? { ...x, points } : x)));
+    if (live) {
+      await updatePointItem(itemId, points);
+      router.refresh();
+    }
+  };
 
   const totalOf = (id: string) => memberPointTotal(entries, id);
   const ranked = useMemo(() => [...members].sort((a, b) => totalOf(b.membershipId) - totalOf(a.membershipId)), [members, entries]);
@@ -127,7 +209,7 @@ function ExecPoints({ members, entries, items, onLog, live = false }: Props & { 
         </div>
       </div>
 
-      {catalogOpen && <PointValuesDrawer items={items} onClose={() => setCatalogOpen(false)} />}
+      {catalogOpen && <PointValuesDrawer items={items} onClose={() => setCatalogOpen(false)} onSave={saveItem} />}
       {logging && (
         <LogPointsModal
           members={members} items={items} live={live}

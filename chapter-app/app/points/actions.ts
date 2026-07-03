@@ -15,3 +15,12 @@ export async function logPoints(membershipId: string, itemId: string, points: nu
   });
   if (error) throw new Error(error.message);
 }
+
+// Edit a catalog item's point value. Exec-only — RLS (point_items_cud) enforces
+// it server-side. This changes FUTURE awards only: points_entries.points is a
+// snapshot copied at log time, so past entries and existing totals are untouched.
+export async function updatePointItem(itemId: string, points: number) {
+  const sb = getServerSupabase();
+  const { error } = await sb.from('point_items').update({ points }).eq('id', itemId);
+  if (error) throw new Error(error.message);
+}

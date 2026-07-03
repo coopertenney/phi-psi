@@ -17,10 +17,18 @@
 begin;
 
 -- 1. Remove the 12 dummy members. ON DELETE CASCADE takes their dues, payments,
---    points, attendance, and RSVPs with them; dummy announcement authors go null.
+--    points, attendance, and RSVPs with them (so the seed finance data is gone) —
+--    but announcements only have their author_id set null, so the 4 seeded demo
+--    announcements would otherwise survive into the live app posted by "Chapter".
 delete from memberships where chapter_id = 'aaaaaaaa-0000-0000-0000-000000000001';
 delete from profiles p
   where not exists (select 1 from memberships m where m.profile_id = p.id);
+
+-- 1b. Drop the now-orphaned dummy announcements (author_id nulled by the cascade
+--     above). Real announcements composed in-app always carry an author, so this
+--     targets only the seed rows — safe to re-run after real posts exist.
+delete from announcements
+  where chapter_id = 'aaaaaaaa-0000-0000-0000-000000000001' and author_id is null;
 
 -- 2. Stage the real roster.
 create temp table roster (full_name text, email text, access_role access_role, class_year int)
