@@ -84,6 +84,17 @@ function MemberDashboard({ member: m, events }: { member: MemberRow; events: Eve
         </div>
       )}
 
+      <div className="pkp-card" style={{ padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <h3 className="pkp-h3" style={{ marginBottom: 2 }}>Earn points</h3>
+          <div style={{ fontSize: 12.5, color: 'var(--ink-500)' }}>Did something on the accountability list? Log it for an officer to approve.</div>
+        </div>
+        <Link href="/points" onClick={() => sessionStorage.setItem('pkp-open-points-log', '1')}
+          className="pkp-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', height: 40, padding: '0 18px', fontSize: 13.5, textDecoration: 'none', flexShrink: 0 }}>
+          Log points
+        </Link>
+      </div>
+
       <div className="pkp-card" style={{ padding: 20 }}>
         <h3 className="pkp-h3" style={{ marginBottom: 14 }}>Coming up</h3>
         <div style={{ display: 'flex', flexDirection: 'column' }}>

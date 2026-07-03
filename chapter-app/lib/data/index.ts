@@ -61,8 +61,18 @@ export async function getMembers(): Promise<MemberRow[]> {
 }
 
 // The real signed-in member's display identity for the topbar. Null in mock
-// mode (no auth) → the UI falls back to the demo MOCK_USER.
-export async function getCurrentUser(): Promise<{ fullName: string; title: string } | null> {
+// mode (no auth) → the UI falls back to the demo MOCK_USER. `accessRole` is the
+// permission axis (exec/member/admin) the sidebar derives its persona from —
+// null when the signed-in user isn't on the roster yet (treated as least
+// privilege by the caller).
+export async function getCurrentUser(): Promise<
+  {
+    fullName: string;
+    title: string;
+    accessRole: 'admin' | 'exec' | 'member' | null;
+    status: 'active' | 'new' | 'inactive' | null;
+  } | null
+> {
   if (!isSupabaseConfigured) return null;
   const sb = getServerSupabase();
   const { data: { user } } = await sb.auth.getUser();
@@ -71,12 +81,14 @@ export async function getCurrentUser(): Promise<{ fullName: string; title: strin
   // Look up by auth_user_id (exact, indexed — what RLS itself matches on) rather
   // than a fuzzy email-embed filter.
   const { data: prof } = await sb.from('profiles').select('id, full_name').eq('auth_user_id', user.id).maybeSingle();
-  if (!prof) return { fullName: user.email ?? 'Member', title: 'Not on roster' };
+  if (!prof) return { fullName: user.email ?? 'Member', title: 'Not on roster', accessRole: null, status: null };
 
-  const { data: mem } = await sb.from('memberships').select('position, access_role').eq('profile_id', prof.id).maybeSingle();
+  const { data: mem } = await sb.from('memberships').select('position, access_role, status').eq('profile_id', prof.id).maybeSingle();
+  const accessRole = (mem?.access_role as 'admin' | 'exec' | 'member' | undefined) ?? null;
+  const status = (mem?.status as 'active' | 'new' | 'inactive' | undefined) ?? null;
   const title = mem?.position
-    ?? (mem?.access_role === 'admin' ? 'Admin' : mem?.access_role === 'exec' ? 'Officer' : 'Brother');
-  return { fullName: prof.full_name, title };
+    ?? (accessRole === 'admin' ? 'Admin' : accessRole === 'exec' ? 'Officer' : 'Brother');
+  return { fullName: prof.full_name, title, accessRole, status };
 }
 
 export async function getStats(): Promise<ChapterStats> {
@@ -387,7 +399,7 @@ export async function getPointEntries(): Promise<PointEntry[]> {
   const sb = getServerSupabase();
   const { data, error } = await sb
     .from('points_entries')
-    .select('id, membership_id, item_id, points, approved_by, created_at, point_items(label), memberships!inner(chapter_id)')
+    .select('id, membership_id, item_id, points, approved_by, status, created_at, point_items(label), memberships!inner(chapter_id)')
     .eq('memberships.chapter_id', CHAPTER_ID)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -399,6 +411,7 @@ export async function getPointEntries(): Promise<PointEntry[]> {
     points: r.points,
     date: r.created_at,
     approvedBy: r.approved_by ?? '',
+    status: r.status ?? 'approved',
   }));
 }
 

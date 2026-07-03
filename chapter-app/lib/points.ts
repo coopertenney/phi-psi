@@ -28,9 +28,18 @@ export const POINT_FLOOR = -5;
 export const entriesFor = (entries: PointEntry[], membershipId: string): PointEntry[] =>
   entries.filter((e) => e.membershipId === membershipId);
 
-// A member's standing: floor applied to the sum of their logged entries.
+// Member self-logged entries still awaiting exec approval. Shown in the member's
+// own ledger and the exec approvals queue, but excluded from every total below.
+export const pendingFor = (entries: PointEntry[], membershipId: string): PointEntry[] =>
+  entriesFor(entries, membershipId).filter((e) => e.status === 'pending');
+
+// Only approved entries count toward standing — a pending member request is a
+// proposal, not points. Mirrors member_standings' `where status = 'approved'`.
+const approved = (entries: PointEntry[]): PointEntry[] => entries.filter((e) => e.status === 'approved');
+
+// A member's standing: floor applied to the sum of their APPROVED entries.
 export function memberPointTotal(entries: PointEntry[], membershipId: string): number {
-  const sum = entriesFor(entries, membershipId).reduce((a, e) => a + e.points, 0);
+  const sum = approved(entriesFor(entries, membershipId)).reduce((a, e) => a + e.points, 0);
   return Math.max(POINT_FLOOR, sum);
 }
 
@@ -39,14 +48,14 @@ export function memberPointTotal(entries: PointEntry[], membershipId: string): n
 // "accountable member of the month" (biggest gainer).
 export function weekChange(entries: PointEntry[], membershipId: string, now: Date): number {
   const cutoff = now.getTime() - 7 * 86_400_000;
-  return entriesFor(entries, membershipId)
+  return approved(entriesFor(entries, membershipId))
     .filter((e) => new Date(e.date).getTime() >= cutoff)
     .reduce((a, e) => a + e.points, 0);
 }
 
-// Reward vs punishment split for a member, for the ledger summary.
+// Reward vs punishment split for a member, for the ledger summary. Approved only.
 export function rewardPunishmentSplit(entries: PointEntry[], membershipId: string): { reward: number; punishment: number } {
-  const mine = entriesFor(entries, membershipId);
+  const mine = approved(entriesFor(entries, membershipId));
   return {
     reward: mine.filter((e) => e.points > 0).reduce((a, e) => a + e.points, 0),
     punishment: mine.filter((e) => e.points < 0).reduce((a, e) => a + e.points, 0),

@@ -158,6 +158,7 @@ function genEntries(id: string, e: number): PointEntry[] {
     out.push({
       id: `${id}-pe${k}`, membershipId: id, itemId: item.id, label: item.label, points: item.points,
       date: d.toISOString(), approvedBy: APPROVERS[Math.floor(seededUnit(`${id}-pa${k}`) * APPROVERS.length)],
+      status: 'approved',
     });
     k += 1;
   };
@@ -173,6 +174,26 @@ export const mockPointEntries: PointEntry[] = SEED.flatMap((_, i) => {
   const id = `mock-${i + 1}`;
   return genEntries(id, engagementById.get(id) ?? 0.5);
 });
+
+// A few member self-log REQUESTS awaiting exec approval, so the exec approvals
+// queue and the member's "Pending" ledger rows are populated in mock mode.
+// Pending entries don't count toward totals (memberPointTotal filters approved),
+// so appending them here doesn't shift `pointsById` below.
+const idByName = (name: string): string => `mock-${SEED.findIndex((s) => s.name === name) + 1}`;
+const pendingRequest = (name: string, itemLabel: string, daysAgo: number): PointEntry => {
+  const item = mockPointItems.find((it) => it.label === itemLabel)!;
+  const d = new Date(NOW); d.setDate(d.getDate() - daysAgo); d.setHours(12, 0, 0, 0);
+  return {
+    id: `pending-${idByName(name)}-${item.id}`, membershipId: idByName(name), itemId: item.id,
+    label: item.label, points: item.points, date: d.toISOString(), approvedBy: '', status: 'pending',
+  };
+};
+mockPointEntries.unshift(
+  pendingRequest('Tyler Brooks', 'Attend a Philanthropy Event', 1),
+  pendingRequest('Tyler Brooks', 'Completing a (required) Sober Shift', 2),
+  pendingRequest('Noah Williams', 'DJing', 1),
+  pendingRequest('Diego Ramirez', 'Party Setup Shift', 3),
+);
 
 const pointsById = new Map<string, number>(
   SEED.map((_, i) => { const id = `mock-${i + 1}`; return [id, memberPointTotal(mockPointEntries, id)]; }),

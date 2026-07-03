@@ -98,6 +98,11 @@ export interface AttendanceRecord {
 
 export type PointKind = 'reward' | 'punishment';
 
+// 'approved' = counts toward the member's total (exec-logged entries and
+// approved member requests). 'pending' = a member self-logged this reward and
+// it awaits exec approval — visible in the ledger but excluded from totals.
+export type PointEntryStatus = 'pending' | 'approved';
+
 export interface PointItem {
   id: string;
   label: string;
@@ -113,7 +118,8 @@ export interface PointEntry {
   label: string;             // denormalized from the catalog (as the sheet stores it)
   points: number;
   date: string;              // ISO
-  approvedBy: string;
+  approvedBy: string;        // exec who logged/approved; '' while pending
+  status: PointEntryStatus;  // pending member requests don't count toward totals
   note?: string;
 }
 
