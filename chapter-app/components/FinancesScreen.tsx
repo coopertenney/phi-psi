@@ -13,7 +13,7 @@ import { NOW } from '@/lib/engagement';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
 import { CHAPTER_ID } from '@/lib/chapter';
 import { useApp } from './Providers';
-import { Avatar, Badge, Chips, StatCards, CloseButton, AddButton, MiniStat } from './ui';
+import { Avatar, Badge, Chips, StatCards, AddButton, MiniStat, Drawer } from './ui';
 import { icons } from './icons';
 import { Switch } from './AccessScreen';
 import { Modal, ModalActions, Field, Select, FieldRow, downloadCsv } from './form';
@@ -343,20 +343,25 @@ function FinanceDrawer({ member: m, extra, onAddFine, onClose }: {
   );
 
   return (
-    <>
-      <div className="pkp-scrim" onClick={onClose} />
-      <div className="pkp-drawer">
-        <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 16, background: 'var(--white)' }}>
-          <Avatar name={m.fullName} size={58} fontSize={20} />
-          <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</h2>
-            <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · {CURRENT_QUARTER_LABEL}</div>
-            <div style={{ marginTop: 8 }}><Badge tone={db.tone}>{db.label}</Badge></div>
-          </div>
-          <CloseButton onClose={onClose} />
+    <Drawer
+      onClose={onClose}
+      header={<>
+        <Avatar name={m.fullName} size={58} fontSize={20} />
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</h2>
+          <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · {CURRENT_QUARTER_LABEL}</div>
+          <div style={{ marginTop: 8 }}><Badge tone={db.tone}>{db.label}</Badge></div>
         </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      </>}
+      footer={<>
+        <a className="pkp-btn-primary"
+          href={`mailto:${m.email}?subject=${encodeURIComponent('Phi Kappa Psi — dues reminder')}&body=${encodeURIComponent(`Hi ${m.fullName.split(' ')[0]},\n\nA reminder that you have an outstanding balance of ${money(owed)} for ${CURRENT_QUARTER_LABEL}. Please settle it before the next chapter meeting.\n\nThanks,\nTreasurer`)}`}
+          style={{ flex: 1, height: 42, fontSize: 13.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', pointerEvents: owed === 0 ? 'none' : 'auto', opacity: owed === 0 ? 0.5 : 1 }}>
+          Send reminder
+        </a>
+        <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onAddFine}>Add fine</button>
+      </>}
+    >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             {card(money(dues.charged), 'Charged', 'var(--ink-900)')}
             {card(money(dues.paid), 'Paid', 'var(--success-600)')}
@@ -375,18 +380,7 @@ function FinanceDrawer({ member: m, extra, onAddFine, onClose }: {
             </div>
             <FinesList fines={fines} exec />
           </div>
-        </div>
-
-        <div style={{ padding: '16px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10 }}>
-          <a className="pkp-btn-primary"
-            href={`mailto:${m.email}?subject=${encodeURIComponent('Phi Kappa Psi — dues reminder')}&body=${encodeURIComponent(`Hi ${m.fullName.split(' ')[0]},\n\nA reminder that you have an outstanding balance of ${money(owed)} for ${CURRENT_QUARTER_LABEL}. Please settle it before the next chapter meeting.\n\nThanks,\nTreasurer`)}`}
-            style={{ flex: 1, height: 42, fontSize: 13.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', pointerEvents: owed === 0 ? 'none' : 'auto', opacity: owed === 0 ? 0.5 : 1 }}>
-            Send reminder
-          </a>
-          <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={onAddFine}>Add fine</button>
-        </div>
-      </div>
-    </>
+    </Drawer>
   );
 }
 

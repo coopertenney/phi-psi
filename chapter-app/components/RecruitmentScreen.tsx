@@ -9,7 +9,7 @@ import { FUNNEL, STAGE_META, nextStage, pnmNotes } from '@/lib/recruitment';
 import { MOCK_USER } from '@/lib/session';
 import { createPnm, setPnmStage, ratePnm, votePnm, addPnmNote, type PnmInput } from '@/app/recruitment/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge, Chips, StatCards, CloseButton, AddButton } from './ui';
+import { Avatar, Badge, Chips, StatCards, AddButton, Drawer } from './ui';
 import { icons } from './icons';
 import { Modal, ModalActions, Field, Select, FieldRow } from './form';
 
@@ -366,20 +366,31 @@ function PnmDrawer({ pnm: p, exec, live = false, notesByPnm = {}, myRatings = {}
   );
 
   return (
-    <>
-      <div className="pkp-scrim" onClick={onClose} />
-      <div className="pkp-drawer">
-        <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 16, background: 'var(--white)' }}>
-          <Avatar name={p.fullName} size={58} fontSize={20} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{p.fullName}</h2>
-            <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{p.standing} · {p.major}</div>
-            <div style={{ marginTop: 8 }}><StageBadge stage={p.stage} /></div>
-          </div>
-          <CloseButton onClose={onClose} />
+    <Drawer
+      onClose={onClose}
+      header={<>
+        <Avatar name={p.fullName} size={58} fontSize={20} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{p.fullName}</h2>
+          <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{p.standing} · {p.major}</div>
+          <div style={{ marginTop: 8 }}><StageBadge stage={p.stage} /></div>
         </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      </>}
+      footer={exec ? (
+        p.stage === 'accepted' ? (
+          <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 600, color: 'var(--success-600)' }}>🎉 Joined the chapter</div>
+        ) : p.stage === 'declined' ? (
+          <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, 'interview')}>Reopen candidate</button>
+        ) : (
+          <>
+            {p.stage === 'bid'
+              ? <button className="pkp-btn-primary" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, 'accepted')}>Mark accepted</button>
+              : next && <button className="pkp-btn-primary" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, next)}>Advance to {STAGE_META[next].short}</button>}
+            <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, 'declined')}>Decline</button>
+          </>
+        )
+      ) : undefined}
+    >
           <div className="pkp-card" style={{ padding: 16 }}>
             <div className="pkp-col-head" style={{ marginBottom: 12 }}>Details</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
@@ -436,25 +447,6 @@ function PnmDrawer({ pnm: p, exec, live = false, notesByPnm = {}, myRatings = {}
               ))}
             </div>
           </div>
-        </div>
-
-        {exec && (
-          <div style={{ padding: '16px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10 }}>
-            {p.stage === 'accepted' ? (
-              <div style={{ flex: 1, textAlign: 'center', fontSize: 13.5, fontWeight: 600, color: 'var(--success-600)' }}>🎉 Joined the chapter</div>
-            ) : p.stage === 'declined' ? (
-              <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, 'interview')}>Reopen candidate</button>
-            ) : (
-              <>
-                {p.stage === 'bid'
-                  ? <button className="pkp-btn-primary" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, 'accepted')}>Mark accepted</button>
-                  : next && <button className="pkp-btn-primary" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, next)}>Advance to {STAGE_META[next].short}</button>}
-                <button className="pkp-btn-ghost" style={{ flex: 1, height: 42, fontSize: 13.5 }} onClick={() => onStage?.(p.id, 'declined')}>Decline</button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-    </>
+    </Drawer>
   );
 }

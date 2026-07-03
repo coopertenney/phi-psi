@@ -1,4 +1,5 @@
-import { getPnms, getPnmNotes, getMyPnmChoices } from '@/lib/data';
+import { redirect } from 'next/navigation';
+import { getPnms, getPnmNotes, getMyPnmChoices, getCurrentUser } from '@/lib/data';
 import { isSupabaseConfigured } from '@/lib/supabase/server';
 import { RecruitmentScreen } from '@/components/RecruitmentScreen';
 
@@ -7,6 +8,12 @@ import { RecruitmentScreen } from '@/components/RecruitmentScreen';
 // rates, votes, and leaves notes on the PNMs being rushed (all persist via
 // server actions in live mode).
 export default async function RecruitmentPage() {
+  // New members are gated out of Recruitment — the sidebar hides the tab, and
+  // this guards direct URL access (RLS alone would let any chapter member read
+  // PNMs). Execs/admins are never "new", so this only ever redirects pledges.
+  const me = await getCurrentUser().catch(() => null);
+  if (me?.status === 'new' && me.accessRole !== 'exec' && me.accessRole !== 'admin') redirect('/dashboard');
+
   const [pnms, notesByPnm, mine] = await Promise.all([getPnms(), getPnmNotes(), getMyPnmChoices()]);
   return (
     <RecruitmentScreen

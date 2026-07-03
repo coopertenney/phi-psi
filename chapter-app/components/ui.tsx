@@ -15,6 +15,32 @@ export function Badge({ tone, children }: { tone: BadgeTone; children: React.Rea
   return <span className={`pkp-badge ${tone}`}>{children}</span>;
 }
 
+// The slide-in detail drawer shared by every screen: scrim + panel, a header
+// row (caller supplies the leader/title as `header`; the ✕ is built in), a
+// scrolling body (children), and an optional footer. `headerGap`/`bodyGap`
+// carry the small per-screen spacing differences.
+export function Drawer({ onClose, header, footer, headerGap = 16, bodyGap = 18, children }: {
+  onClose: () => void; header: ReactNode; footer?: ReactNode; headerGap?: number; bodyGap?: number; children: ReactNode;
+}) {
+  return (
+    <>
+      <div className="pkp-scrim" onClick={onClose} />
+      <div className="pkp-drawer">
+        <div style={{ padding: 22, borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: headerGap, background: 'var(--white)' }}>
+          {header}
+          <CloseButton onClose={onClose} />
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: bodyGap }}>
+          {children}
+        </div>
+        {footer && (
+          <div style={{ padding: '16px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10 }}>{footer}</div>
+        )}
+      </div>
+    </>
+  );
+}
+
 // The round ✕ that closes every detail drawer (matches the Modal's close).
 export function CloseButton({ onClose }: { onClose: () => void }) {
   return (
