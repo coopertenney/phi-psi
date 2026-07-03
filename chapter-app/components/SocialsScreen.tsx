@@ -9,7 +9,7 @@ import { NOW } from '@/lib/engagement';
 import { currentMember } from '@/lib/session';
 import { createEvent, updateEvent, deleteEvent, setRsvp, type EventInput } from '@/app/socials/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge, CloseButton, AddButton } from './ui';
+import { Avatar, Badge, CloseButton, AddButton, MiniStat } from './ui';
 import { icons } from './icons';
 import { Modal, Field, Select, TextArea, FieldRow, Checkbox } from './form';
 
@@ -348,10 +348,7 @@ function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
   );
 
   const stat = (val: string, label: string, color: string) => (
-    <div className="pkp-card" style={{ padding: 14 }}>
-      <div className="pkp-mono" style={{ fontSize: 20, fontWeight: 600, color, lineHeight: 1 }}>{val}</div>
-      <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 6 }}>{label}</div>
-    </div>
+    <MiniStat val={val} label={label} color={color} />
   );
 
   return (

@@ -31,6 +31,16 @@ export function AddButton({ label, onClick }: { label: string; onClick: () => vo
   );
 }
 
+// Small labelled figure card (mono value + caption) used inside detail drawers.
+export function MiniStat({ val, label, color }: { val: ReactNode; label: ReactNode; color?: string }) {
+  return (
+    <div className="pkp-card" style={{ padding: 14 }}>
+      <div className="pkp-mono" style={{ fontSize: 20, fontWeight: 600, color, lineHeight: 1 }}>{val}</div>
+      <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 6 }}>{label}</div>
+    </div>
+  );
+}
+
 // Filter-chip row: the `.pkp-chips` group used above every roster/pipeline table.
 export function Chips<T extends string>({ options, value, onChange }: {
   options: readonly { id: T; label: string }[]; value: T; onChange: (id: T) => void;

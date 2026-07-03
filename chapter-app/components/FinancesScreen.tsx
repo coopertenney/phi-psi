@@ -13,7 +13,7 @@ import { NOW } from '@/lib/engagement';
 import { getBrowserSupabase } from '@/lib/supabase/browser';
 import { CHAPTER_ID } from '@/lib/chapter';
 import { useApp } from './Providers';
-import { Avatar, Badge, Chips, StatCards, CloseButton, AddButton } from './ui';
+import { Avatar, Badge, Chips, StatCards, CloseButton, AddButton, MiniStat } from './ui';
 import { icons } from './icons';
 import { Switch } from './AccessScreen';
 import { Modal, ModalActions, Field, Select, FieldRow, downloadCsv } from './form';
@@ -339,10 +339,7 @@ function FinanceDrawer({ member: m, extra, onAddFine, onClose }: {
   const finesUnpaid = finesOutstanding(m) + unpaidExtra(extra);
   const owed = dues.balance + finesUnpaid;
   const card = (val: string, label: string, color: string) => (
-    <div className="pkp-card" style={{ padding: 14 }}>
-      <div className="pkp-mono" style={{ fontSize: 20, fontWeight: 600, color, lineHeight: 1 }}>{val}</div>
-      <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 6 }}>{label}</div>
-    </div>
+    <MiniStat val={val} label={label} color={color} />
   );
 
   return (
