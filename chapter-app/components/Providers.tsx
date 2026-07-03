@@ -12,6 +12,7 @@ type Ctx = {
   persona: Persona; setPersona: (p: Persona) => void;
   role: 'exec' | 'member';
   isAdmin: boolean;
+  canSwitchPersona: boolean;
   tabAccess: TabAccess;
   toggleTab: (audience: Audience, href: string) => void;
 };
@@ -23,17 +24,28 @@ export function useApp() {
   return ctx;
 }
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  // Default to admin so the access-control feature is discoverable on first load.
-  const [persona, setPersona] = useState<Persona>('admin');
+export function Providers({ signedInPersona = null, children }: {
+  signedInPersona?: Persona | null;
+  children: React.ReactNode;
+}) {
+  // A real signed-in user's role is authoritative — it drives the sidebar so a
+  // member never inherits a stale `admin` from localStorage. Only in mock/demo
+  // mode (no signed-in user) do we default to admin so the access-control
+  // feature stays discoverable and the "view as" switcher persists.
+  const [persona, setPersona] = useState<Persona>(signedInPersona ?? 'admin');
   const [tabAccess, setTabAccess] = useState<TabAccess>(defaultTabAccess);
   const [loaded, setLoaded] = useState(false);
+  // Only the demo (no real user) or a real admin may "view as" another persona;
+  // a real member can't switch back into admin/exec tabs.
+  const canSwitchPersona = signedInPersona === null || signedInPersona === 'admin';
 
   // Restore persisted prefs once on mount.
   useEffect(() => {
+    // Persona is restored from localStorage only in demo mode. For a real
+    // signed-in user their role already seeded it and must win over any cache.
     const p = localStorage.getItem('pkp-persona') as Persona | null;
     const a = localStorage.getItem('pkp-tab-access');
-    if (p) setPersona(p);
+    if (p && signedInPersona === null) setPersona(p);
     if (a) {
       // Merge stored access *over* the defaults so a tab/audience added later
       // doesn't read back undefined (which would hide it).
@@ -48,18 +60,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
       } catch { /* keep defaults */ }
     }
     setLoaded(true);
-  }, []);
+  }, [signedInPersona]);
 
   // Lock the visual theme on <html>.
   useEffect(() => { document.documentElement.dataset.theme = THEME; }, []);
 
   // Persist only *after* the initial restore — otherwise the default values
   // overwrite stored prefs on a fresh mount (the bug that reset the toggle).
+  // Persona is persisted only in demo mode; a real user's persona comes from
+  // their role each load, so caching it would just risk masking a role change.
   useEffect(() => {
     if (!loaded) return;
-    localStorage.setItem('pkp-persona', persona);
+    if (signedInPersona === null) localStorage.setItem('pkp-persona', persona);
     localStorage.setItem('pkp-tab-access', JSON.stringify(tabAccess));
-  }, [loaded, persona, tabAccess]);
+  }, [loaded, persona, tabAccess, signedInPersona]);
 
   const toggleTab = (audience: Audience, href: string) =>
     setTabAccess((prev) => ({
@@ -71,6 +85,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     persona, setPersona,
     role: roleFor(persona),
     isAdmin: persona === 'admin',
+    canSwitchPersona,
     tabAccess, toggleTab,
   };
 
