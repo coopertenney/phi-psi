@@ -190,6 +190,25 @@ button { font: inherit; }
 
   /* Recruitment PNM cards: one per row instead of two. */
   .pkp-pnm-cards { grid-template-columns:1fr; }
+
+  /* Socials list rows: drop the RSVP bar + "going" count (132px on the right)
+     so the title/meta get the full width instead of wrapping to 4–5 lines.
+     Tapping the row opens the drawer, where the RSVP breakdown lives. */
+  .pkp-evt-rsvp { display:none; }
+
+  /* Attendance exec grid: the per-meeting dot strip can't sit beside a 190px
+     name column at 375px (it wrapped 2-wide into a tall stack). Let name +
+     percentage share the first line, then flow the dots full-width below. */
+  .pkp-att-row { flex-wrap:wrap; }
+  .pkp-att-name { width:auto !important; flex:1 1 auto; }
+  .pkp-att-pct { order:2; }
+  .pkp-att-dots { order:3; flex:0 0 100% !important; margin-top:9px; }
+
+  /* Files toolbar: the search + New folder / Add link / Upload actions are a
+     ~600px row that overflowed a 375px screen (Upload fell off the edge). Wrap
+     them, drop the search onto its own full-width line, buttons flow below. */
+  .pkp-files-actions { flex-wrap:wrap; margin-left:0 !important; width:100%; gap:8px !important; }
+  .pkp-files-actions .pkp-search { width:100% !important; flex:1 1 100%; }
 }
 
 /* ---------- generic ---------- */

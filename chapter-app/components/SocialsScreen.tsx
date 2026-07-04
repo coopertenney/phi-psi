@@ -199,7 +199,7 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
             {relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)} · {e.location}
           </div>
         </div>
-        <div style={{ width: 132, flexShrink: 0 }}>
+        <div className="pkp-evt-rsvp" style={{ width: 132, flexShrink: 0 }}>
           <div style={{ fontSize: 12, color: 'var(--ink-600)', marginBottom: 5, textAlign: 'right' }}>
             <span style={{ fontWeight: 600, color: 'var(--ink-800)' }}>{e.rsvp.going}</span> going
           </div>

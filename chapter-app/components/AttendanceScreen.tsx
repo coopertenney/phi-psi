@@ -81,18 +81,18 @@ function ExecAttendance({ members, meetings, attendance }: Props) {
             const states = byId.get(m.membershipId) ?? [];
             const pct = pctFrom(states);
             return (
-              <div key={m.membershipId} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: 190, flexShrink: 0, minWidth: 0 }}>
+              <div key={m.membershipId} className="pkp-att-row" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
+                <div className="pkp-att-name" style={{ display: 'flex', alignItems: 'center', gap: 10, width: 190, flexShrink: 0, minWidth: 0 }}>
                   <Avatar name={m.fullName} size={30} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.fullName}</div>
                     <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>{m.roleLabel}</div>
                   </div>
                 </div>
-                <div style={{ flex: 1, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                <div className="pkp-att-dots" style={{ flex: 1, display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                   {states.map((s, k) => <Dot key={k} state={s} />)}
                 </div>
-                <div className="pkp-mono pkp-r" style={{ width: 48, flexShrink: 0, fontSize: 14, fontWeight: 600, color: pct < 80 ? 'var(--pkp-primary)' : 'var(--ink-800)' }}>{pct}%</div>
+                <div className="pkp-mono pkp-r pkp-att-pct" style={{ width: 48, flexShrink: 0, fontSize: 14, fontWeight: 600, color: pct < 80 ? 'var(--pkp-primary)' : 'var(--ink-800)' }}>{pct}%</div>
               </div>
             );
           })}

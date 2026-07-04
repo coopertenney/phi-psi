@@ -236,7 +236,7 @@ export function FilesScreen({ items: seeded, live, ownerName }: {
           ))}
         </nav>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="pkp-files-actions" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="pkp-search" style={{ width: 220 }}>
             <span style={{ display: 'inline-flex' }}>{icons.search}</span>
             <input
