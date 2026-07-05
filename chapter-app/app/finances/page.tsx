@@ -1,4 +1,5 @@
 import { getMembers, getStats, getChapterSettings, getMyMembershipId } from '@/lib/data';
+import { getRecentPayments } from '@/lib/data/payments';
 import { isSupabaseConfigured } from '@/lib/supabase/server';
 import { FinancesScreen } from '@/components/FinancesScreen';
 
@@ -7,8 +8,8 @@ import { FinancesScreen } from '@/components/FinancesScreen';
 // a member sees only their own — their real membership in live mode (gated by
 // RLS), or the persona toggle's stand-in in mock/demo mode.
 export default async function FinancesPage() {
-  const [members, stats, settings, myMembershipId] = await Promise.all([
-    getMembers(), getStats(), getChapterSettings(), getMyMembershipId(),
+  const [members, stats, settings, myMembershipId, recentPayments] = await Promise.all([
+    getMembers(), getStats(), getChapterSettings(), getMyMembershipId(), getRecentPayments(),
   ]);
   return (
     <FinancesScreen
@@ -16,6 +17,7 @@ export default async function FinancesPage() {
       stats={stats}
       settings={settings}
       myMembershipId={myMembershipId}
+      recentPayments={recentPayments}
       live={isSupabaseConfigured}
     />
   );

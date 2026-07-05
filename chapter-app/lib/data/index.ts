@@ -2,10 +2,11 @@
 // and live Supabase based on whether env vars are set — components never know.
 import type {
   MemberRow, ChapterStats, EventRow, MeetingRow, AttendanceRecord, AttendanceState, AnnouncementRow, PnmRow, PnmNote,
-  PointItem, PointEntry, DriveItem, RsvpState,
+  PointItem, PointEntry, DriveItem, RsvpState, MemberTermStatus,
 } from '../types';
+import { cache } from 'react';
 import { isSupabaseConfigured, getServerSupabase } from '../supabase/server';
-import { resolveMembershipId } from '../membership';
+import { resolveMembershipId, resolveIdentity } from '../membership';
 import {
   mockMembers, mockStats, mockEvents, mockMeetings, mockAttendance, mockAnnouncements, mockPnms,
   mockPointItems, mockPointEntries, mockFiles,
@@ -21,7 +22,9 @@ const roleLabel = (position: string | null, status: string) =>
 const accessRoleLabel = (role: string | null): string =>
   role === 'admin' ? 'Admin' : role === 'exec' ? 'Officer' : 'Brother';
 
-export async function getMembers(): Promise<MemberRow[]> {
+// Deduped per request: the layout and the page both need the roster, so without
+// this each navigation ran the three roster queries twice.
+export const getMembers = cache(async (): Promise<MemberRow[]> => {
   if (!isSupabaseConfigured) return mockMembers;
 
   const sb = getServerSupabase();
@@ -64,14 +67,14 @@ export async function getMembers(): Promise<MemberRow[]> {
       flags: s.flags ?? [],
     };
   });
-}
+});
 
 // The real signed-in member's display identity for the topbar. Null in mock
 // mode (no auth) → the UI falls back to the demo MOCK_USER. `accessRole` is the
 // permission axis (exec/member/admin) the sidebar derives its persona from —
 // null when the signed-in user isn't on the roster yet (treated as least
 // privilege by the caller).
-export async function getCurrentUser(): Promise<
+export const getCurrentUser = cache(async (): Promise<
   {
     fullName: string;
     title: string;
@@ -79,23 +82,16 @@ export async function getCurrentUser(): Promise<
     accessRole: 'admin' | 'exec' | 'member' | null;
     status: 'active' | 'new' | 'inactive' | null;
   } | null
-> {
+> => {
   if (!isSupabaseConfigured) return null;
-  const sb = getServerSupabase();
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return null;
+  // Shared identity join (deduped per request in lib/membership).
+  const id = await resolveIdentity();
+  if (!id) return null; // not signed in
+  if (!id.onRoster) return { fullName: id.email ?? 'Member', title: 'Not on roster', avatarUrl: null, accessRole: null, status: null };
 
-  // Look up by auth_user_id (exact, indexed — what RLS itself matches on) rather
-  // than a fuzzy email-embed filter.
-  const { data: prof } = await sb.from('profiles').select('id, full_name, avatar_url').eq('auth_user_id', user.id).maybeSingle();
-  if (!prof) return { fullName: user.email ?? 'Member', title: 'Not on roster', avatarUrl: null, accessRole: null, status: null };
-
-  const { data: mem } = await sb.from('memberships').select('position, access_role, status').eq('profile_id', prof.id).maybeSingle();
-  const accessRole = (mem?.access_role as 'admin' | 'exec' | 'member' | undefined) ?? null;
-  const status = (mem?.status as 'active' | 'new' | 'inactive' | undefined) ?? null;
-  const title = mem?.position ?? accessRoleLabel(accessRole);
-  return { fullName: prof.full_name, title, avatarUrl: prof.avatar_url ?? null, accessRole, status };
-}
+  const title = id.position ?? accessRoleLabel(id.accessRole);
+  return { fullName: id.fullName ?? id.email ?? 'Member', title, avatarUrl: id.avatarUrl, accessRole: id.accessRole, status: id.status };
+});
 
 export async function getStats(): Promise<ChapterStats> {
   if (!isSupabaseConfigured) return mockStats();
@@ -195,9 +191,9 @@ export async function getMyMembershipId(): Promise<string | null> {
 export async function getMeetings(): Promise<MeetingRow[]> {
   if (!isSupabaseConfigured) return mockMeetings;
   const sb = getServerSupabase();
-  const { data, error } = await sb.from('meetings').select('id, title, held_on').eq('chapter_id', CHAPTER_ID).order('held_on');
+  const { data, error } = await sb.from('meetings').select('id, title, held_on, checkin_open').eq('chapter_id', CHAPTER_ID).order('held_on');
   if (error) throw error;
-  return (data ?? []).map((r: any): MeetingRow => ({ id: r.id, title: r.title, date: r.held_on }));
+  return (data ?? []).map((r: any): MeetingRow => ({ id: r.id, title: r.title, date: r.held_on, checkinOpen: r.checkin_open ?? false }));
 }
 
 export async function getAttendance(): Promise<AttendanceRecord[]> {
@@ -223,6 +219,25 @@ export async function getAttendance(): Promise<AttendanceRecord[]> {
   return (memberships ?? []).map((m: any): AttendanceRecord => ({
     membershipId: m.id,
     states: meetingIds.map((mid) => byMember.get(m.id)?.get(mid) ?? 'absent'),
+  }));
+}
+
+// Standing all-quarter statuses (abroad / recurring excuse) for the current
+// term — seeds the take-attendance grid and shows badges on the roster.
+export async function getMemberTermStatuses(): Promise<MemberTermStatus[]> {
+  if (!isSupabaseConfigured) return [];
+  const sb = getServerSupabase();
+  const { data: term } = await sb
+    .from('terms').select('id').eq('chapter_id', CHAPTER_ID).eq('is_current', true).maybeSingle();
+  if (!term) return [];
+  const { data, error } = await sb
+    .from('member_term_statuses')
+    .select('membership_id, kind, reason')
+    .eq('chapter_id', CHAPTER_ID)
+    .eq('term_id', term.id);
+  if (error) throw error;
+  return (data ?? []).map((r: any): MemberTermStatus => ({
+    membershipId: r.membership_id, kind: r.kind, reason: r.reason ?? null,
   }));
 }
 
@@ -278,6 +293,17 @@ export async function getAnnouncements(): Promise<AnnouncementRow[]> {
       category: r.category,
     };
   });
+}
+
+// Announcement ids the signed-in member has marked read. RLS
+// (announcement_reads_mine) already scopes the query to the caller's own rows,
+// so no membership filter is needed here. Empty in mock mode.
+export async function getMyAnnouncementReads(): Promise<string[]> {
+  if (!isSupabaseConfigured) return [];
+  const sb = getServerSupabase();
+  const { data, error } = await sb.from('announcement_reads').select('announcement_id');
+  if (error) throw error;
+  return (data ?? []).map((r: any) => r.announcement_id as string);
 }
 
 // rating/vote counts + averages are DERIVED from pnm_ratings/pnm_votes at read

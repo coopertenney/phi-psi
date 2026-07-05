@@ -1,10 +1,8 @@
-import { getMembers, getMyMembershipId } from '@/lib/data';
-import { isSupabaseConfigured } from '@/lib/supabase/server';
-import { ProfileScreen } from '@/components/ProfileScreen';
+import { redirect } from 'next/navigation';
 
-// The signed-in member's own profile page. Photo upload + standing + contact +
-// lineage. Resolves identity from the roster (by membership id when live).
-export default async function ProfilePage() {
-  const [members, myMembershipId] = await Promise.all([getMembers(), getMyMembershipId()]);
-  return <ProfileScreen members={members} myMembershipId={myMembershipId} live={isSupabaseConfigured} />;
+// Profile is no longer a standalone tab/page — it opens as a popup from the
+// avatar in the topbar (see AppShell → ProfileDialog). Any stale link or
+// bookmark to /profile lands back on the dashboard.
+export default function ProfilePage() {
+  redirect('/dashboard');
 }

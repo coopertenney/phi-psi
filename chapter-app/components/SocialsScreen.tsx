@@ -11,7 +11,7 @@ import { createEvent, updateEvent, deleteEvent, setRsvp, type EventInput } from 
 import { useApp } from './Providers';
 import { Avatar, Badge, AddButton, MiniStat, Drawer } from './ui';
 import { icons } from './icons';
-import { Modal, Field, Select, TextArea, FieldRow, Checkbox } from './form';
+import { Modal, Field, Select, TextArea, FieldRow } from './form';
 
 /* ─────────────────────────── Socials = social + brotherhood ───────────────────────────
    The tab was narrowed from the old all-purpose Events screen to just the social
@@ -36,8 +36,14 @@ const RSVP_META: Record<RsvpState, { tone: BadgeTone; label: string }> = {
 };
 
 const DAY = 86_400_000;
+const HRS2 = 2 * 60 * 60 * 1000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const isPast = (e: EventRow): boolean => new Date(e.startsAt).getTime() < NOW.getTime();
+// An event's end time — falls back to 2h after start when there's no explicit end.
+const endMs = (e: EventRow): number => (e.endsAt ? new Date(e.endsAt).getTime() : new Date(e.startsAt).getTime() + HRS2);
+// Live = started but not yet ended, relative to the demo clock (NOW).
+const isLiveNow = (e: EventRow): boolean => { const n = NOW.getTime(); return new Date(e.startsAt).getTime() <= n && n < endMs(e); };
+// Past = already ended, so an in-progress event reads as "live", not "past".
+const isPast = (e: EventRow): boolean => endMs(e) <= NOW.getTime();
 
 // Monday 00:00 of the week containing `d`.
 function startOfWeek(d: Date): Date {
@@ -81,7 +87,12 @@ function buildIndex(rsvps: EventRsvp[]): RsvpIndex {
 
 const toInput = (e: EventRow): EventInput => ({
   title: e.title, type: e.type, startsAt: e.startsAt, endsAt: e.endsAt,
-  location: e.location, description: e.description, mandatory: e.mandatory, pointsValue: e.pointsValue,
+  location: e.location, description: e.description,
+  // Formatted here (client-side) so the creation notification shows the time in
+  // the chapter's timezone rather than the server's UTC.
+  whenLabel: new Date(e.startsAt).toLocaleString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }),
 });
 
 function DateBlock({ iso, muted }: { iso: string; muted?: boolean }) {
@@ -111,6 +122,113 @@ function RsvpBar({ rsvp }: { rsvp: EventRow['rsvp'] }) {
   );
 }
 
+/* ─────────────────────────── Month calendar ───────────────────────────
+   A month grid keyed off the demo clock (NOW = today). Days with a social get a
+   tinted pill + dot; today is a solid pill. Clicking a day opens its first
+   social. Prev/next browse months. */
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+function MonthCalendar({ events, onPickDay }: { events: EventRow[]; onPickDay: (id: string) => void }) {
+  const [view, setView] = useState(() => new Date(NOW.getFullYear(), NOW.getMonth(), 1));
+  const y = view.getFullYear();
+  const mo = view.getMonth();
+  const startPad = new Date(y, mo, 1).getDay();          // 0 = Sunday
+  const daysIn = new Date(y, mo + 1, 0).getDate();
+  const isToday = (d: number) => NOW.getFullYear() === y && NOW.getMonth() === mo && NOW.getDate() === d;
+
+  const byDay = useMemo(() => {
+    const m = new Map<number, EventRow[]>();
+    for (const e of events) {
+      const d = new Date(e.startsAt);
+      if (d.getFullYear() === y && d.getMonth() === mo) {
+        (m.get(d.getDate()) ?? m.set(d.getDate(), []).get(d.getDate())!).push(e);
+      }
+    }
+    return m;
+  }, [events, y, mo]);
+
+  const cells: (number | null)[] = [...Array(startPad).fill(null), ...Array.from({ length: daysIn }, (_, i) => i + 1)];
+  const navBtn: React.CSSProperties = { border: '1px solid var(--cream-400)', background: 'var(--white)', borderRadius: 8, width: 28, height: 28, cursor: 'pointer', color: 'var(--ink-600)', fontSize: 15, lineHeight: 1 };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <button style={navBtn} aria-label="Previous month" onClick={() => setView(new Date(y, mo - 1, 1))}>‹</button>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--ink-900)' }}>
+          {view.toLocaleString('en-US', { month: 'long', year: 'numeric' })}
+        </div>
+        <button style={navBtn} aria-label="Next month" onClick={() => setView(new Date(y, mo + 1, 1))}>›</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 4 }}>
+        {WEEKDAYS.map((d, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', color: 'var(--ink-400)', padding: '2px 0' }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2 }}>
+        {cells.map((d, i) => {
+          if (d === null) return <div key={i} />;
+          const evs = byDay.get(d) ?? [];
+          const has = evs.length > 0;
+          const tod = isToday(d);
+          return (
+            <button
+              key={i} disabled={!has} title={has ? evs.map((e) => e.title).join(', ') : undefined}
+              onClick={() => has && onPickDay(evs[0].id)}
+              style={{
+                height: 42, borderRadius: 12, border: 'none', padding: 0,
+                cursor: has ? 'pointer' : 'default',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                background: tod ? 'var(--pkp-primary)' : has ? 'color-mix(in srgb, var(--pkp-primary) 13%, transparent)' : 'transparent',
+                color: tod ? '#fff' : has ? 'var(--pkp-primary)' : 'var(--ink-700)',
+                fontWeight: tod || has ? 700 : 500, fontSize: 13,
+              }}
+            >
+              <span className="pkp-mono">{d}</span>
+              <span style={{ width: 5, height: 5, borderRadius: 999, background: has ? (tod ? '#fff' : 'var(--pkp-primary)') : 'transparent' }} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Live event card ───────────────────────────
+   Prominent banner at the top of the member agenda when an event is happening
+   right now (started, not yet ended — see isLiveNow). Chapter meetings
+   (type 'meeting') get a "Check In Now" button that jumps to the Attendance tab,
+   where the rotating room-code check-in lives; any other live event (a social)
+   just shows the live styling with no action. */
+function LiveEventCard({ event: e, onCheckIn }: { event: EventRow; onCheckIn: () => void }) {
+  const isMeeting = e.type === 'meeting';
+  return (
+    <div style={{
+      position: 'relative', borderRadius: 'var(--radius-lg)', padding: 16,
+      border: '1px solid var(--success-300)',
+      background: 'linear-gradient(180deg, color-mix(in srgb, var(--success-500) 11%, var(--white)), var(--white))',
+      boxShadow: '0 0 0 3px color-mix(in srgb, var(--success-500) 12%, transparent)',
+    }}>
+      <span style={{
+        position: 'absolute', top: 13, right: 13, display: 'inline-flex', alignItems: 'center', gap: 5,
+        fontSize: 11, fontWeight: 700, letterSpacing: '.04em', color: '#fff',
+        background: 'var(--success-500)', padding: '3px 10px', borderRadius: 999,
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: 999, background: '#fff' }} /> LIVE
+      </span>
+      <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ink-900)', paddingRight: 62, lineHeight: 1.2 }}>{e.title}</div>
+      <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 4 }}>Now · {e.location || 'Chapter House'}</div>
+      {isMeeting && (
+        <button onClick={onCheckIn} style={{
+          marginTop: 14, width: '100%', height: 46, border: 'none', borderRadius: 999, cursor: 'pointer',
+          background: 'var(--success-500)', color: '#fff', fontSize: 14.5, fontWeight: 700,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: 999, background: '#fff' }} /> Check In Now
+        </button>
+      )}
+    </div>
+  );
+}
+
 type Props = {
   events: EventRow[];
   members: MemberRow[];
@@ -127,7 +245,7 @@ export function SocialsScreen({ events, members, rsvps, myMembershipId, live }: 
   if (role === 'member') {
     const me = live ? members.find((m) => m.membershipId === myMembershipId) : currentMember(members, persona);
     return me
-      ? <MemberSocials socials={socials} me={me} rsvpIndex={rsvpIndex} live={live} />
+      ? <MemberSocials socials={socials} events={events} me={me} rsvpIndex={rsvpIndex} live={live} />
       : <p style={{ color: 'var(--ink-500)' }}>Your member profile isn’t loaded yet.</p>;
   }
   return <ExecSocials socials={socials} members={members} rsvpIndex={rsvpIndex} live={live} />;
@@ -154,7 +272,9 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
     () => [...list].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
     [list],
   );
-  const upcoming = useMemo(() => byWeek(sorted.filter((e) => !isPast(e)), NOW), [sorted]);
+  const liveNow = useMemo(() => sorted.filter(isLiveNow), [sorted]);
+  // Strictly-future socials, grouped by week (This week / Next week / …).
+  const upcoming = useMemo(() => byWeek(sorted.filter((e) => new Date(e.startsAt).getTime() > NOW.getTime()), NOW), [sorted]);
   const past = useMemo(() => sorted.filter(isPast).reverse(), [sorted]);
   const selected = list.find((e) => e.id === selectedId) ?? null;
 
@@ -184,7 +304,7 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
     finally { setBusy(false); }
   };
 
-  const row = (e: EventRow, muted = false) => {
+  const row = (e: EventRow, { muted = false, live: liveRow = false }: { muted?: boolean; live?: boolean } = {}) => {
     const tm = typeMeta(e.type);
     return (
       <div key={e.id} className="pkp-row" style={{ display: 'flex', gap: 14, alignItems: 'center', gridTemplateColumns: 'unset' }} onClick={() => setSelectedId(e.id)}>
@@ -192,6 +312,11 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 14.5, fontWeight: 600, color: 'var(--ink-900)' }}>{e.title}</span>
+            {liveRow && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, letterSpacing: '.03em', color: 'var(--success-600)', background: 'var(--success-100)', padding: '2px 8px', borderRadius: 999 }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--success-500)' }} /> LIVE
+              </span>
+            )}
             <Badge tone={tm.tone}>{tm.label}</Badge>
             {e.mandatory && <Badge tone="danger">Mandatory</Badge>}
           </div>
@@ -220,32 +345,58 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
         <AddButton label="Create social" onClick={() => setForm('new')} />
       </div>
 
-      {upcoming.length === 0 && (
-        <div className="pkp-card" style={{ padding: 32, textAlign: 'center', fontSize: 13.5, color: 'var(--ink-500)' }}>
-          No upcoming socials. Click “Create social” to add one.
-        </div>
-      )}
-      {upcoming.map((g) => (
-        <section key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="pkp-col-head">{g.label}</div>
-          <div className="pkp-card" style={{ overflow: 'hidden' }}>
-            {g.items.map((e, i) => (
-              <div key={e.id} style={{ borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>{row(e)}</div>
-            ))}
-          </div>
-        </section>
-      ))}
+      <div className="pkp-socials-grid">
+        <div className="pkp-pa-col">
+          {liveNow.length > 0 && (
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="pkp-col-head" style={{ color: 'var(--success-600)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--success-500)' }} /> Live now
+              </div>
+              <div className="pkp-card" style={{ overflow: 'hidden', border: '1px solid var(--success-300)', boxShadow: '0 0 0 3px color-mix(in srgb, var(--success-500) 12%, transparent)' }}>
+                {liveNow.map((e, i) => (
+                  <div key={e.id} style={{ borderTop: i ? '1px solid var(--cream-200)' : 'none', background: 'color-mix(in srgb, var(--success-500) 6%, transparent)' }}>{row(e, { live: true })}</div>
+                ))}
+              </div>
+            </section>
+          )}
 
-      {past.length > 0 && (
-        <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div className="pkp-col-head">Past</div>
-          <div className="pkp-card" style={{ overflow: 'hidden' }}>
-            {past.map((e, i) => (
-              <div key={e.id} style={{ borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>{row(e, true)}</div>
-            ))}
+          {liveNow.length === 0 && upcoming.length === 0 && (
+            <div className="pkp-card" style={{ padding: 32, textAlign: 'center', fontSize: 13.5, color: 'var(--ink-500)' }}>
+              No upcoming socials. Click “Create social” to add one.
+            </div>
+          )}
+          {upcoming.map((g) => (
+            <section key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="pkp-col-head">{g.label}</div>
+              <div className="pkp-card" style={{ overflow: 'hidden' }}>
+                {g.items.map((e, i) => (
+                  <div key={e.id} style={{ borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>{row(e)}</div>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          {past.length > 0 && (
+            <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="pkp-col-head">Past</div>
+              <div className="pkp-card" style={{ overflow: 'hidden' }}>
+                {past.map((e, i) => (
+                  <div key={e.id} style={{ borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>{row(e, { muted: true })}</div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+
+        <div className="pkp-socials-cal">
+          <div className="pkp-card" style={{ padding: 16, position: 'sticky', top: 16 }}>
+            <MonthCalendar events={list} onPickDay={(id) => setSelectedId(id)} />
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: 'var(--ink-500)' }}>
+              <span style={{ width: 9, height: 9, borderRadius: 999, background: 'color-mix(in srgb, var(--pkp-primary) 30%, transparent)' }} /> Days with a social · tap to open
+            </div>
           </div>
-        </section>
-      )}
+        </div>
+      </div>
 
       {selected && (
         <SocialDrawer
@@ -284,8 +435,6 @@ function SocialFormModal({ base, busy, onClose, onSave, onDelete }: {
   const [time, setTime] = useState(base ? toTimeInput(base.startsAt) : '21:00');
   const [location, setLocation] = useState(base?.location ?? '');
   const [description, setDescription] = useState(base?.description ?? '');
-  const [mandatory, setMandatory] = useState(base?.mandatory ?? false);
-  const [points, setPoints] = useState(String(base?.pointsValue ?? 0));
 
   const canSave = title.trim() !== '' && date !== '' && location.trim() !== '' && !busy;
   const submit = () => {
@@ -296,7 +445,9 @@ function SocialFormModal({ base, busy, onClose, onSave, onDelete }: {
       id: base?.id ?? `evt-local-${Date.now()}`,
       title: title.trim(), type, startsAt, endsAt,
       location: location.trim(), description: description.trim(),
-      mandatory, pointsValue: Number(points) || 0,
+      // Socials aren't mandatory and don't carry points — keep any existing
+      // values on edit, default to none for new ones.
+      mandatory: base?.mandatory ?? false, pointsValue: base?.pointsValue ?? 0,
       rsvp: base?.rsvp ?? { going: 0, maybe: 0, no: 0 },
     });
   };
@@ -316,18 +467,14 @@ function SocialFormModal({ base, busy, onClose, onSave, onDelete }: {
         </button>
       </>}>
       <Field label="Title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Founders Day Formal" />
-      <FieldRow>
-        <Select label="Type" value={type} onChange={(e) => setType(e.target.value as EventType)}
-          options={SOCIAL_TYPES.map((t) => ({ value: t, label: TYPE_META[t as 'social' | 'brotherhood'].label }))} />
-        <Field label="Points" type="number" min={0} value={points} onChange={(e) => setPoints(e.target.value)} />
-      </FieldRow>
+      <Select label="Type" value={type} onChange={(e) => setType(e.target.value as EventType)}
+        options={SOCIAL_TYPES.map((t) => ({ value: t, label: TYPE_META[t as 'social' | 'brotherhood'].label }))} />
       <FieldRow>
         <Field label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <Field label="Time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
       </FieldRow>
       <Field label="Location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Chapter House — Great Room" />
       <TextArea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What's happening?" />
-      <Checkbox label="Mandatory" checked={mandatory} onChange={(e) => setMandatory(e.target.checked)} />
     </Modal>
   );
 }
@@ -418,8 +565,8 @@ function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
 
 /* ─────────────────────────── Member: agenda + RSVP ─────────────────────────── */
 
-function MemberSocials({ socials, me, rsvpIndex, live }: {
-  socials: EventRow[]; me: MemberRow; rsvpIndex: RsvpIndex; live: boolean;
+function MemberSocials({ socials, events, me, rsvpIndex, live }: {
+  socials: EventRow[]; events: EventRow[]; me: MemberRow; rsvpIndex: RsvpIndex; live: boolean;
 }) {
   const router = useRouter();
   const sorted = useMemo(
@@ -428,6 +575,14 @@ function MemberSocials({ socials, me, rsvpIndex, live }: {
   );
   const upcoming = useMemo(() => byWeek(sorted.filter((e) => !isPast(e)), NOW), [sorted]);
   const past = useMemo(() => sorted.filter(isPast).reverse(), [sorted]);
+
+  // What's happening right now, across ALL events (not just socials) so a live
+  // chapter meeting surfaces here too. Prefer a live meeting (it carries the
+  // check-in action); otherwise show the first live event.
+  const liveEvent = useMemo(() => {
+    const now = events.filter(isLiveNow);
+    return now.find((e) => e.type === 'meeting') ?? now[0] ?? null;
+  }, [events]);
 
   const seed = useMemo(
     () => Object.fromEntries(socials.map((e) => [e.id, rsvpIndex.get(e.id)?.get(me.membershipId) ?? null])) as Record<string, RsvpState | null>,
@@ -443,18 +598,24 @@ function MemberSocials({ socials, me, rsvpIndex, live }: {
   };
 
   const [flashId, setFlashId] = useState<string | null>(null);
+  // Scroll an agenda card into view and flash it. Used by the topbar search
+  // hand-off (sessionStorage) and by tapping a day in the calendar.
+  const focusEvent = (id: string) => {
+    setFlashId(id);
+    document.getElementById(`evt-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => setFlashId(null), 1600);
+  };
   useEffect(() => {
     const focus = sessionStorage.getItem('pkp-focus-event');
     if (!focus) return;
     sessionStorage.removeItem('pkp-focus-event');
-    setFlashId(focus);
-    document.getElementById(`evt-${focus}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const t = setTimeout(() => setFlashId(null), 1600);
-    return () => clearTimeout(t);
+    focusEvent(focus);
   }, []);
 
   return (
-    <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 22 }}>
+    <div className="pkp-socials-grid">
+      <div className="pkp-pa-col">
+      {liveEvent && <LiveEventCard event={liveEvent} onCheckIn={() => router.push('/points')} />}
       <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <h3 className="pkp-h3">Upcoming socials</h3>
         {upcoming.length === 0 && <div className="pkp-card" style={{ padding: 20, fontSize: 13.5, color: 'var(--ink-500)' }}>No upcoming socials yet.</div>}
@@ -515,6 +676,16 @@ function MemberSocials({ socials, me, rsvpIndex, live }: {
           })}
         </div>
       </section>
+      </div>
+
+      <div className="pkp-socials-cal">
+        <div className="pkp-card" style={{ padding: 16, position: 'sticky', top: 16 }}>
+          <MonthCalendar events={socials} onPickDay={focusEvent} />
+          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 7, fontSize: 11.5, color: 'var(--ink-500)' }}>
+            <span style={{ width: 9, height: 9, borderRadius: 999, background: 'color-mix(in srgb, var(--pkp-primary) 30%, transparent)' }} /> Days with a social · tap to open
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -62,7 +62,19 @@ export interface ChapterStats {
 export type EventType =
   | 'meeting' | 'philanthropy' | 'social' | 'brotherhood' | 'service' | 'mandatory' | 'recruitment';
 export type RsvpState = 'going' | 'maybe' | 'no'; // absence of a response = null
-export type AttendanceState = 'present' | 'excused' | 'absent';
+// present/late/absent are per-meeting marks; excused/abroad also stand in for a
+// standing MemberTermStatus. Attendance % = present / (present + absent) — late,
+// excused and abroad are neutral (dropped from the denominator).
+export type AttendanceState = 'present' | 'late' | 'absent' | 'excused' | 'abroad';
+
+// A standing, all-quarter status for one member: 'abroad' the whole term, or a
+// recurring 'excused' with a free-text reason. Seeds the take-attendance grid.
+export type TermStatusKind = 'abroad' | 'excused';
+export interface MemberTermStatus {
+  membershipId: string;
+  kind: TermStatusKind;
+  reason: string | null;
+}
 
 export interface EventRow {
   id: string;
@@ -82,6 +94,7 @@ export interface MeetingRow {
   id: string;
   title: string;
   date: string;              // ISO
+  checkinOpen?: boolean;     // members may self-check-in with the rotating code
 }
 
 // Raw attendance facts for one member across the meeting series (ordered to

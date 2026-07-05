@@ -34,6 +34,9 @@ export const icons = {
   recruitment: (
     <Svg><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx={9} cy={7} r={4} /><path d="M19 8v6" /><path d="M22 11h-6" /></Svg>
   ),
+  lineage: (
+    <Svg><circle cx={12} cy={5} r={2.6} /><circle cx={5} cy={19} r={2.6} /><circle cx={19} cy={19} r={2.6} /><path d="M12 7.6v3.4M5 16.4v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2" /></Svg>
+  ),
   access: (
     <Svg><path d="M12 2 4 5v6c0 5 3.4 8.2 8 9 4.6-.8 8-4 8-9V5l-8-3Z" /><path d="m9 12 2 2 4-4" /></Svg>
   ),

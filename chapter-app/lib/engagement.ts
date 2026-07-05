@@ -40,10 +40,13 @@ export function memberAttendance(salt: string, targetPct: number, count: number)
   );
 }
 
-export const attendancePctFrom = (states: AttendanceState[]): number =>
-  states.length
-    ? Math.round((states.filter((s) => s === 'present').length / states.length) * 100)
-    : 0;
+// Attendance % = present / (present + absent). late/excused/abroad are neutral
+// (dropped from the denominator). Kept in lockstep with attendance-v2.sql and
+// AttendanceScreen's pctFrom.
+export const attendancePctFrom = (states: AttendanceState[]): number => {
+  const graded = states.filter((s) => s === 'present' || s === 'absent').length;
+  return graded ? Math.round((states.filter((s) => s === 'present').length / graded) * 100) : 0;
+};
 
 /* ─────────────────────────── RSVPs ───────────────────────────
    A member's RSVP to an event (null = no response). Mandatory/meeting types skew

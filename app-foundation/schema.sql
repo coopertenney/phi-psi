@@ -333,6 +333,19 @@ returns boolean language sql security definer stable as $$
   );
 $$;
 
+-- Helper: is the current auth user an ADMIN (President) of this chapter? Admin is
+-- the top tier — it can appoint the exec board (change access_role/position).
+create or replace function is_chapter_admin(p_chapter uuid)
+returns boolean language sql security definer stable as $$
+  select exists (
+    select 1 from memberships m
+    join profiles p on p.id = m.profile_id
+    where m.chapter_id = p_chapter
+      and p.auth_user_id = auth.uid()
+      and m.access_role = 'admin'
+  );
+$$;
+
 alter table memberships    enable row level security;
 alter table dues_charges   enable row level security;
 alter table payments       enable row level security;
@@ -341,6 +354,15 @@ alter table announcements  enable row level security;
 -- Roster basics are visible to every member of the chapter.
 create policy roster_read on memberships
   for select using (is_chapter_member(chapter_id));
+
+-- APPOINTMENTS: only an admin (President) may change roles/positions on the
+-- roster — appointing the exec board and demoting outgoing officers (see
+-- app/members/actions.ts → appointExec). The action grants the new slate first,
+-- then demotes non-slate officers with the caller's own row last, so admin rights
+-- survive the batch. USING checks the actor is admin; WITH CHECK re-checks after.
+create policy roster_admin_update on memberships
+  for update using (is_chapter_admin(chapter_id))
+  with check (is_chapter_admin(chapter_id));
 
 -- FINANCES: a member sees only their OWN dues; exec sees the whole chapter.
 create policy dues_read on dues_charges

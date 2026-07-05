@@ -4,9 +4,13 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import {
   type Persona, type Audience, type TabAccess, roleFor, defaultTabAccess,
 } from '@/lib/nav';
+import {
+  type Term, BASE_TERM, advanceTerm, nextTerm, termLabel as fmtTermLabel, termAcademicYear,
+} from '@/lib/calendar';
 
-// The chapter is locked to the Hunter scheme (green primary + crest accent).
-const THEME = 'hunter';
+// The chapter is locked to the Dark scheme (glass UI over the chapter photo,
+// green primary + gold crest accent).
+const THEME = 'dark';
 
 type Ctx = {
   persona: Persona; setPersona: (p: Persona) => void;
@@ -15,6 +19,12 @@ type Ctx = {
   canSwitchPersona: boolean;
   tabAccess: TabAccess;
   toggleTab: (audience: Audience, href: string) => void;
+  // Cyclable current-term marker (see lib/calendar). Display-only.
+  term: Term;
+  termLabel: string;
+  academicYearLabel: string;
+  nextTermLabel: string;
+  cycleQuarter: () => void;
 };
 const AppContext = createContext<Ctx | null>(null);
 
@@ -34,6 +44,8 @@ export function Providers({ signedInPersona = null, children }: {
   // feature stays discoverable and the "view as" switcher persists.
   const [persona, setPersona] = useState<Persona>(signedInPersona ?? 'admin');
   const [tabAccess, setTabAccess] = useState<TabAccess>(defaultTabAccess);
+  // How many quarters the current-term marker has been advanced past today's term.
+  const [termOffset, setTermOffset] = useState(0);
   const [loaded, setLoaded] = useState(false);
   // Only the demo (no real user) or a real admin may "view as" another persona;
   // a real member can't switch back into admin/exec tabs.
@@ -45,7 +57,9 @@ export function Providers({ signedInPersona = null, children }: {
     // signed-in user their role already seeded it and must win over any cache.
     const p = localStorage.getItem('pkp-persona') as Persona | null;
     const a = localStorage.getItem('pkp-tab-access');
+    const t = localStorage.getItem('pkp-term-offset');
     if (p && signedInPersona === null) setPersona(p);
+    if (t) { const n = parseInt(t, 10); if (Number.isFinite(n) && n >= 0) setTermOffset(n); }
     if (a) {
       // Merge stored access *over* the defaults so a tab/audience added later
       // doesn't read back undefined (which would hide it).
@@ -73,7 +87,8 @@ export function Providers({ signedInPersona = null, children }: {
     if (!loaded) return;
     if (signedInPersona === null) localStorage.setItem('pkp-persona', persona);
     localStorage.setItem('pkp-tab-access', JSON.stringify(tabAccess));
-  }, [loaded, persona, tabAccess, signedInPersona]);
+    localStorage.setItem('pkp-term-offset', String(termOffset));
+  }, [loaded, persona, tabAccess, termOffset, signedInPersona]);
 
   const toggleTab = (audience: Audience, href: string) =>
     setTabAccess((prev) => ({
@@ -81,12 +96,19 @@ export function Providers({ signedInPersona = null, children }: {
       [audience]: { ...prev[audience], [href]: !prev[audience][href] },
     }));
 
+  const term = advanceTerm(BASE_TERM, termOffset);
+
   const value: Ctx = {
     persona, setPersona,
     role: roleFor(persona),
     isAdmin: persona === 'admin',
     canSwitchPersona,
     tabAccess, toggleTab,
+    term,
+    termLabel: fmtTermLabel(term),
+    academicYearLabel: termAcademicYear(term).label,
+    nextTermLabel: fmtTermLabel(nextTerm(term)),
+    cycleQuarter: () => setTermOffset((o) => o + 1),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

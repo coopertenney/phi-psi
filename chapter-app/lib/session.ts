@@ -11,10 +11,10 @@ export type { Quarter } from './calendar';
 // mirrors the demo users surfaced in the topbar. `admin` is reserved for the
 // President/VP; `new` is a new-member persona used to demo tab access.
 export const MOCK_USER: Record<Persona, { name: string; title: string }> = {
-  admin: { name: 'Marcus Chen', title: 'President' },
-  exec: { name: 'Aisha Patel', title: 'Treasurer' },
-  member: { name: 'Tyler Brooks', title: 'Social Chair' },
-  new: { name: 'Owen Mitchell', title: 'New member' },
+  admin: { name: 'Eddy Duran', title: 'President' },
+  exec: { name: 'Zachary Ewing', title: 'Treasurer' },
+  member: { name: 'Sam Cousins', title: 'Brother' },
+  new: { name: 'Tyler Rubenstein', title: 'New member' },
 };
 
 // Resolve the current member's roster row for a persona. Used by the member
@@ -31,7 +31,7 @@ export const currentMember = (members: MemberRow[], persona: Persona): MemberRow
 export const QUARTER_DUES_CENTS: Record<Quarter, number> = {
   fall: 53700,
   winter: 53700,
-  spring: 25000,
+  spring: 30000,
 };
 
 export const currentDuesCents = QUARTER_DUES_CENTS[CURRENT_QUARTER];

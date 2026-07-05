@@ -6,14 +6,14 @@ import type {
 } from '@/lib/types';
 import { money, duesBadge, fmtWeekday, fmtTime, relativeDay, type BadgeTone } from '@/lib/format';
 import {
-  CURRENT_QUARTER_LABEL, duesFor, currentMember,
+  duesFor, currentMember,
 } from '@/lib/session';
 import { NOW, rsvpFor } from '@/lib/engagement';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 import { PaidPill } from './FinancesScreen';
 
-type Props = { members: MemberRow[]; stats: ChapterStats; events: EventRow[]; announcements: AnnouncementRow[] };
+type Props = { members: MemberRow[]; stats: ChapterStats; events: EventRow[]; announcements: AnnouncementRow[]; myMembershipId?: string | null };
 
 const isPast = (e: EventRow): boolean => new Date(e.startsAt).getTime() < NOW.getTime();
 const upcomingEvents = (events: EventRow[]): EventRow[] =>
@@ -36,10 +36,14 @@ function MiniDate({ iso }: { iso: string }) {
   );
 }
 
-export function DashboardScreen({ members, stats, events, announcements }: Props) {
+export function DashboardScreen({ members, stats, events, announcements, myMembershipId = null }: Props) {
   const { role, persona } = useApp();
   if (role === 'member') {
-    const me = currentMember(members, persona);
+    // Live: resolve the signed-in member by real membership id; mock/demo: fall
+    // back to the persona-name lookup (matches Finances/Socials/Points).
+    const me = myMembershipId
+      ? members.find((m) => m.membershipId === myMembershipId)
+      : currentMember(members, persona);
     if (me) return <MemberDashboard member={me} events={events} />;
   }
   return <ExecDashboard members={members} stats={stats} events={events} announcements={announcements} />;
@@ -48,6 +52,7 @@ export function DashboardScreen({ members, stats, events, announcements }: Props
 /* ─────────────────────────── Member: dues front and center ─────────────────────────── */
 
 function MemberDashboard({ member: m, events }: { member: MemberRow; events: EventRow[] }) {
+  const { termLabel } = useApp();
   const db = duesBadge(m.duesState);
   const dues = duesFor(m);
   const pct = Math.min(100, Math.round((dues.paid / dues.charged) * 100));
@@ -57,14 +62,14 @@ function MemberDashboard({ member: m, events }: { member: MemberRow; events: Eve
   return (
     <>
       {settled ? (
-        <PaidPill label="Dues paid in full" sub={CURRENT_QUARTER_LABEL} />
+        <PaidPill label="Dues paid in full" sub={termLabel} />
       ) : (
         <div className="pkp-card pkp-card--feature" style={{ padding: 28 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-500)' }}>Dues balance</div>
               <div className="pkp-mono" style={{ fontSize: 52, fontWeight: 600, letterSpacing: '-.02em', lineHeight: 1.02, marginTop: 6, color: 'var(--pkp-primary)' }}>{money(dues.balance)}</div>
-              <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 8 }}>{CURRENT_QUARTER_LABEL}</div>
+              <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 8 }}>{termLabel}</div>
             </div>
             <Badge tone={db.tone}>{db.label}</Badge>
           </div>

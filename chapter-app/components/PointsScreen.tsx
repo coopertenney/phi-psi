@@ -16,9 +16,9 @@ import { Modal, ModalActions, Field, Select } from './form';
 const ptColor = (n: number) => (n > 0 ? 'var(--success-600)' : n < 0 ? 'var(--pkp-primary)' : 'var(--ink-500)');
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
-type Props = { members: MemberRow[]; entries: PointEntry[]; items: PointItem[]; live?: boolean };
+type Props = { members: MemberRow[]; entries: PointEntry[]; items: PointItem[]; live?: boolean; myMembershipId?: string | null };
 
-export function PointsScreen({ live = false, ...props }: Props) {
+export function PointsScreen({ live = false, myMembershipId = null, ...props }: Props) {
   const { role, persona } = useApp();
   const [entries, setEntries] = useState<PointEntry[]>(props.entries);
   useEffect(() => setEntries(props.entries), [props.entries]); // follow server refreshes
@@ -30,7 +30,11 @@ export function PointsScreen({ live = false, ...props }: Props) {
   const onRemove = (id: string) => setEntries((x) => x.filter((e) => e.id !== id));
 
   if (role === 'member') {
-    const me = currentMember(props.members, persona);
+    // Live: identify the signed-in member by their real membership id; mock/demo:
+    // fall back to the persona-name lookup (matches Finances/Socials).
+    const me = myMembershipId
+      ? props.members.find((m) => m.membershipId === myMembershipId)
+      : currentMember(props.members, persona);
     return me
       ? <MemberPoints me={me} members={props.members} entries={entries} items={props.items} live={live} onLog={onLog} onRemove={onRemove} />
       : <p style={{ color: 'var(--ink-500)' }}>No record on file.</p>;

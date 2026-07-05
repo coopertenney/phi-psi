@@ -4,9 +4,10 @@ import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { MemberRow, ChapterStats } from '@/lib/types';
 import type { ChapterSettings } from '@/lib/data';
+import type { RecentPayment } from '@/lib/data/payments';
 import { money, duesBadge, fmtDate } from '@/lib/format';
 import {
-  currentDuesCents, CURRENT_QUARTER_LABEL, duesFor, quarterLedger,
+  currentDuesCents, duesFor, quarterLedger,
   finesFor, finesOutstanding, currentMember, type Fine,
 } from '@/lib/session';
 import { NOW } from '@/lib/engagement';
@@ -103,9 +104,9 @@ const Check = (
   </svg>
 );
 
-export function FinancesScreen({ members, stats, settings, myMembershipId, live }: {
+export function FinancesScreen({ members, stats, settings, myMembershipId, recentPayments = [], live }: {
   members: MemberRow[]; stats: ChapterStats; settings: ChapterSettings;
-  myMembershipId?: string | null; live?: boolean;
+  myMembershipId?: string | null; recentPayments?: RecentPayment[]; live?: boolean;
 }) {
   const { role, persona } = useApp();
   return (
@@ -121,7 +122,7 @@ export function FinancesScreen({ members, stats, settings, myMembershipId, live 
           return me ? <MemberFinances member={me} settings={settings} live={live} /> : <p style={{ color: 'var(--ink-500)' }}>No dues on file.</p>;
         })()
       ) : (
-        <ExecFinances members={members} stats={stats} settings={settings} />
+        <ExecFinances members={members} stats={stats} settings={settings} recentPayments={recentPayments} live={live} />
       )}
     </div>
   );
@@ -204,30 +205,44 @@ function PaymentSettingsCard({ settings }: { settings: ChapterSettings }) {
   );
 }
 
-function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stats: ChapterStats; settings: ChapterSettings }) {
+function ExecFinances({ members, stats, settings, recentPayments, live }: { members: MemberRow[]; stats: ChapterStats; settings: ChapterSettings; recentPayments: RecentPayment[]; live?: boolean }) {
   const [filter, setFilter] = useState<Filter>('all');
   const [selected, setSelected] = useState<MemberRow | null>(null);
   const [extra, setExtra] = useState<ExtraMap>({});
   const [charging, setCharging] = useState<MemberRow | 'pick' | null>(null);
 
   const rows = filter === 'all' ? members : members.filter((m) => m.duesState === filter);
-  const finesOf = (m: MemberRow) => finesOutstanding(m) + unpaidExtra(extra[m.membershipId]);
+  // Live: real balances from member_finances (on the MemberRow). Mock/demo: the
+  // quarter model. In live mode there's no fines table yet, so a member's fines
+  // are only the ephemeral charges an exec adds this session — not the
+  // fabricated standings fines finesFor()/finesOutstanding() invent off attendance.
+  const duesOf = (m: MemberRow) => live
+    ? { charged: m.chargedCents, paid: m.paidCents, balance: m.balanceCents }
+    : duesFor(m);
+  const finesOf = (m: MemberRow) => (live ? 0 : finesOutstanding(m)) + unpaidExtra(extra[m.membershipId]);
   const addCharge = (id: string, fine: Fine) => setExtra((x) => ({ ...x, [id]: [fine, ...(x[id] ?? [])] }));
 
-  // Computed from the roster against the active quarter (+ fines) so the numbers
-  // stay coherent with the quarter dues — not the seed's flat term figure.
-  const collected = members.reduce((a, m) => a + duesFor(m).paid, 0);
-  const duesTarget = currentDuesCents * members.length;
-  const duesOutstanding = members.reduce((a, m) => a + duesFor(m).balance, 0);
+  // Cards. Live: the real chapter_stats aggregates (collected/target + the
+  // paid/partial/due split). Mock/demo: computed from the roster against the
+  // active quarter so the numbers stay coherent with the quarter dues.
+  const collected = live ? stats.collectedCents : members.reduce((a, m) => a + duesFor(m).paid, 0);
+  const duesTarget = live ? stats.targetCents : currentDuesCents * members.length;
+  const duesOutstanding = live ? Math.max(0, stats.targetCents - stats.collectedCents) : members.reduce((a, m) => a + duesFor(m).balance, 0);
   const finesOut = members.reduce((a, m) => a + finesOf(m), 0);
-  const overdueCount = members.filter((m) => m.duesState === 'due').length;
-  const collectedPct = Math.round((collected / duesTarget) * 100);
+  const overdueCount = live ? stats.dueCount : members.filter((m) => m.duesState === 'due').length;
+  const collectedPct = duesTarget > 0 ? Math.round((collected / duesTarget) * 100) : 0;
 
-  const cards = [
-    { val: money(collected), top: 'var(--success-500)', label: 'Collected', sub: `${collectedPct}% of ${money(duesTarget)}` },
-    { val: money(duesOutstanding + finesOut), top: 'var(--warning-500)', label: 'Outstanding', sub: `${money(duesOutstanding)} dues · ${money(finesOut)} fines` },
-    { val: money(finesOut), top: 'var(--pkp-primary)', label: 'Unpaid fines', sub: `${overdueCount} brothers past due on dues` },
-  ];
+  const cards = live
+    ? [
+        { val: money(collected), top: 'var(--success-500)', label: 'Collected', sub: `${collectedPct}% of ${money(duesTarget)}` },
+        { val: money(duesOutstanding), top: 'var(--warning-500)', label: 'Outstanding', sub: 'dues owed this term' },
+        { val: String(overdueCount), top: 'var(--pkp-primary)', label: 'Overdue', sub: `${stats.paidCount} paid · ${stats.partialCount} partial` },
+      ]
+    : [
+        { val: money(collected), top: 'var(--success-500)', label: 'Collected', sub: `${collectedPct}% of ${money(duesTarget)}` },
+        { val: money(duesOutstanding + finesOut), top: 'var(--warning-500)', label: 'Outstanding', sub: `${money(duesOutstanding)} dues · ${money(finesOut)} fines` },
+        { val: money(finesOut), top: 'var(--pkp-primary)', label: 'Unpaid fines', sub: `${overdueCount} brothers past due on dues` },
+      ];
 
   return (
     <>
@@ -240,8 +255,15 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }}
             onClick={() => downloadCsv('cal-beta-finances.csv',
-              ['Brother', 'Role', 'Dues balance', 'Fines', 'Total owed', 'Status'],
-              members.map((m) => { const d = duesFor(m); const f = finesOf(m); return [m.fullName, m.roleLabel, (d.balance / 100).toFixed(2), (f / 100).toFixed(2), ((d.balance + f) / 100).toFixed(2), m.duesState]; }))}>
+              live
+                ? ['Brother', 'Role', 'Charged', 'Paid', 'Balance', 'Status']
+                : ['Brother', 'Role', 'Dues balance', 'Fines', 'Total owed', 'Status'],
+              members.map((m) => {
+                const d = duesOf(m);
+                if (live) return [m.fullName, m.roleLabel, (d.charged / 100).toFixed(2), (d.paid / 100).toFixed(2), (d.balance / 100).toFixed(2), m.duesState];
+                const f = finesOf(m);
+                return [m.fullName, m.roleLabel, (d.balance / 100).toFixed(2), (f / 100).toFixed(2), ((d.balance + f) / 100).toFixed(2), m.duesState];
+              }))}>
             Export
           </button>
           <AddButton label="Add charge" onClick={() => setCharging('pick')} />
@@ -251,17 +273,24 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
       <div className="pkp-card pkp-fin-table" style={{ overflow: 'hidden' }}>
         <div className="pkp-table-head">
           <div className="pkp-col-head">Brother</div>
-          <div className="pkp-col-head pkp-r">Dues bal.</div>
-          <div className="pkp-col-head pkp-r">Fines</div>
-          <div className="pkp-col-head pkp-r">Total owed</div>
+          {/* Live: Charged / Paid / Balance from member_finances. Mock/demo: the
+              quarter model's balance + fabricated fines + total owed. Column 4
+              stays the key figure (Balance / Total owed) — it's the one the
+              mobile list keeps. */}
+          <div className="pkp-col-head pkp-r">{live ? 'Charged' : 'Dues bal.'}</div>
+          <div className="pkp-col-head pkp-r">{live ? 'Paid' : 'Fines'}</div>
+          <div className="pkp-col-head pkp-r">{live ? 'Balance' : 'Total owed'}</div>
           <div className="pkp-col-head">Status</div>
           <div />
         </div>
         {rows.map((m) => {
           const db = duesBadge(m.duesState);
-          const dues = duesFor(m);
+          const dues = duesOf(m);
           const fines = finesOf(m);
-          const total = dues.balance + fines;
+          // Column 2/3/4: live = Charged / Paid / Balance; mock = Balance / Fines / Total owed.
+          const col2 = live ? dues.charged : dues.balance;
+          const col3 = live ? dues.paid : fines;
+          const col4 = live ? dues.balance : dues.balance + fines;
           return (
             <div key={m.membershipId} className="pkp-row" onClick={() => setSelected(m)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -271,9 +300,9 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
                   <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>{m.roleLabel}</div>
                 </div>
               </div>
-              <div className="pkp-mono pkp-r" style={{ fontSize: 14, color: dues.balance > 0 ? 'var(--ink-800)' : 'var(--ink-400)' }}>{money(dues.balance)}</div>
-              <div className="pkp-mono pkp-r" style={{ fontSize: 14, color: fines > 0 ? 'var(--ink-800)' : 'var(--ink-400)' }}>{money(fines)}</div>
-              <div className="pkp-mono pkp-r" style={{ fontSize: 14, fontWeight: 600, color: total > 0 ? 'var(--pkp-primary)' : 'var(--ink-800)' }}>{money(total)}</div>
+              <div className="pkp-mono pkp-r" style={{ fontSize: 14, color: col2 > 0 ? 'var(--ink-800)' : 'var(--ink-400)' }}>{money(col2)}</div>
+              <div className="pkp-mono pkp-r" style={{ fontSize: 14, color: col3 > 0 ? 'var(--ink-800)' : 'var(--ink-400)' }}>{money(col3)}</div>
+              <div className="pkp-mono pkp-r" style={{ fontSize: 14, fontWeight: 600, color: col4 > 0 ? 'var(--pkp-primary)' : 'var(--ink-800)' }}>{money(col4)}</div>
               <div><Badge tone={db.tone}>{db.label}</Badge></div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', color: 'var(--ink-400)' }}>{icons.chevron}</div>
             </div>
@@ -281,10 +310,36 @@ function ExecFinances({ members, stats, settings }: { members: MemberRow[]; stat
         })}
       </div>
 
+      {/* Recent payments — a glanceable activity log of dues coming in, so the
+          treasurer can confirm money is landing without opening each member. */}
+      <div className="pkp-card" style={{ overflow: 'hidden' }}>
+        <div style={{ padding: '15px 22px', borderBottom: '1px solid var(--cream-300)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="pkp-h3" style={{ fontSize: 16 }}>Recent payments</h3>
+          {recentPayments.length > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>Last {recentPayments.length}</span>
+          )}
+        </div>
+        {recentPayments.length === 0 ? (
+          <div style={{ padding: '18px 22px', fontSize: 13, color: 'var(--ink-500)' }}>No payments recorded yet.</div>
+        ) : (
+          recentPayments.map((p, i) => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 22px', borderBottom: i < recentPayments.length - 1 ? '1px solid var(--cream-200)' : 'none' }}>
+              <Avatar name={p.memberName} size={34} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.memberName}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>Dues payment · {fmtDate(p.paidAt)}</div>
+              </div>
+              <span className="pkp-mono" style={{ fontSize: 14, fontWeight: 600, color: 'var(--success-600)', flexShrink: 0 }}>+{money(p.amountCents)}</span>
+            </div>
+          ))
+        )}
+      </div>
+
       {selected && (
         <FinanceDrawer
           member={selected}
           extra={extra[selected.membershipId] ?? []}
+          live={live}
           onAddFine={() => setCharging(selected)}
           onClose={() => setSelected(null)}
         />
@@ -326,14 +381,19 @@ function ChargeModal({ members, fixed, onClose, onSave }: {
   );
 }
 
-function FinanceDrawer({ member: m, extra, onAddFine, onClose }: {
-  member: MemberRow; extra: Fine[]; onAddFine: () => void; onClose: () => void;
+function FinanceDrawer({ member: m, extra, live, onAddFine, onClose }: {
+  member: MemberRow; extra: Fine[]; live?: boolean; onAddFine: () => void; onClose: () => void;
 }) {
+  const { termLabel } = useApp();
   const db = duesBadge(m.duesState);
-  const dues = duesFor(m);
-  const ledger = quarterLedger(m);
-  const fines = [...extra, ...finesFor(m)];
-  const finesUnpaid = finesOutstanding(m) + unpaidExtra(extra);
+  // Live: real member_finances balances, no invented ledger, and only the
+  // ephemeral charges an exec adds this session (no fabricated standings fines).
+  const dues = live
+    ? { charged: m.chargedCents, paid: m.paidCents, balance: m.balanceCents }
+    : duesFor(m);
+  const ledger = live ? [] : quarterLedger(m);
+  const fines = live ? [...extra] : [...extra, ...finesFor(m)];
+  const finesUnpaid = (live ? 0 : finesOutstanding(m)) + unpaidExtra(extra);
   const owed = dues.balance + finesUnpaid;
   const card = (val: string, label: string, color: string) => (
     <MiniStat val={val} label={label} color={color} />
@@ -346,13 +406,13 @@ function FinanceDrawer({ member: m, extra, onAddFine, onClose }: {
         <Avatar name={m.fullName} size={58} fontSize={20} />
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</h2>
-          <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · {CURRENT_QUARTER_LABEL}</div>
+          <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · {termLabel}</div>
           <div style={{ marginTop: 8 }}><Badge tone={db.tone}>{db.label}</Badge></div>
         </div>
       </>}
       footer={<>
         <a className="pkp-btn-primary"
-          href={`mailto:${m.email}?subject=${encodeURIComponent('Phi Kappa Psi — dues reminder')}&body=${encodeURIComponent(`Hi ${m.fullName.split(' ')[0]},\n\nA reminder that you have an outstanding balance of ${money(owed)} for ${CURRENT_QUARTER_LABEL}. Please settle it before the next chapter meeting.\n\nThanks,\nTreasurer`)}`}
+          href={`mailto:${m.email}?subject=${encodeURIComponent('Phi Kappa Psi — dues reminder')}&body=${encodeURIComponent(`Hi ${m.fullName.split(' ')[0]},\n\nA reminder that you have an outstanding balance of ${money(owed)} for ${termLabel}. Please settle it before the next chapter meeting.\n\nThanks,\nTreasurer`)}`}
           style={{ flex: 1, height: 42, fontSize: 13.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none', pointerEvents: owed === 0 ? 'none' : 'auto', opacity: owed === 0 ? 0.5 : 1 }}>
           Send reminder
         </a>
@@ -367,13 +427,17 @@ function FinanceDrawer({ member: m, extra, onAddFine, onClose }: {
 
           <div className="pkp-card" style={{ padding: 16 }}>
             <div className="pkp-col-head" style={{ marginBottom: 12 }}>Dues ledger</div>
-            <Ledger entries={ledger} />
+            {ledger.length
+              ? <Ledger entries={ledger} />
+              : <div style={{ fontSize: 12.5, color: 'var(--ink-400)' }}>No payments recorded yet.</div>}
           </div>
 
           <div className="pkp-card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: fines.length ? 12 : 0 }}>
               <div className="pkp-col-head">Fines</div>
-              <span className="pkp-mono" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--pkp-primary)' }}>{money(finesUnpaid)} unpaid</span>
+              {finesUnpaid > 0
+                ? <span className="pkp-mono" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--pkp-primary)' }}>{money(finesUnpaid)} unpaid</span>
+                : <Badge tone="success">None outstanding</Badge>}
             </div>
             <FinesList fines={fines} exec />
           </div>
@@ -405,6 +469,7 @@ function Ledger({ entries }: { entries: ReturnType<typeof quarterLedger> }) {
 /* ─────────────────────────── Member view ─────────────────────────── */
 
 function MemberFinances({ member: m, settings, live }: { member: MemberRow; settings: ChapterSettings; live?: boolean }) {
+  const { termLabel } = useApp();
   const db = duesBadge(m.duesState);
   // Live: real balances from member_finances (on the MemberRow). Mock/demo: the
   // quarter model. In live mode we deliberately show NO fines or invented
@@ -422,14 +487,14 @@ function MemberFinances({ member: m, settings, live }: { member: MemberRow; sett
   return (
     <div style={{ maxWidth: 620, display: 'flex', flexDirection: 'column', gap: 18 }}>
       {settled ? (
-        <PaidPill label="Dues paid in full" sub={CURRENT_QUARTER_LABEL} />
+        <PaidPill label="Dues paid in full" sub={termLabel} />
       ) : (
         <div className="pkp-card" style={{ padding: 26 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
             <div>
               <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-500)' }}>Balance due</div>
               <div className="pkp-mono" style={{ fontSize: 44, fontWeight: 600, letterSpacing: '-.02em', lineHeight: 1.05, marginTop: 6, color: 'var(--pkp-primary)' }}>{money(dues.balance)}</div>
-              <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 6 }}>{CURRENT_QUARTER_LABEL} · {money(dues.charged)} dues</div>
+              <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 6 }}>{termLabel} · {money(dues.charged)} dues</div>
             </div>
             <Badge tone={db.tone}>{db.label}</Badge>
           </div>

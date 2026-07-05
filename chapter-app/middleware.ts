@@ -89,5 +89,9 @@ export const config = {
   // no user session and verifies Stripe's signature instead, and the checkout
   // route does its own getUser() check (returning a JSON 401, not an HTML
   // redirect). Gating them here would 307-redirect Stripe's webhook to /login.
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?)$).*)'],
+  //
+  // `sw.js` and `manifest.webmanifest` must also be public: the browser fetches
+  // both before/regardless of a session (the service worker registers on the
+  // login page too), and a 307→/login would break PWA install + Web Push.
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|sw\\.js|manifest\\.webmanifest|.*\\.(?:png|jpg|jpeg|svg|ico|webp|woff2?)$).*)'],
 };

@@ -1,9 +1,7 @@
-import { getMembers, getMeetings, getAttendance } from '@/lib/data';
-import { AttendanceScreen } from '@/components/AttendanceScreen';
+import { redirect } from 'next/navigation';
 
-export default async function AttendancePage() {
-  const [members, meetings, attendance] = await Promise.all([
-    getMembers(), getMeetings(), getAttendance(),
-  ]);
-  return <AttendanceScreen members={members} meetings={meetings} attendance={attendance} />;
+// Attendance was merged into the Points & Attendance tab (/points). Keep the old
+// route alive so bookmarks and any lingering links land on the combined view.
+export default function AttendancePage() {
+  redirect('/points');
 }

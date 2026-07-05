@@ -21,13 +21,18 @@ export function Modal({ title, sub, onClose, children, footer, width = 460 }: {
   }, [onClose]);
 
   return (
-    <>
-      <div className="pkp-scrim" onClick={onClose} />
-      <div role="dialog" aria-modal style={{
-        position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        width, maxWidth: '92%', maxHeight: '88%', background: 'var(--cream-50)',
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(20,20,19,.42)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 'clamp(16px, 4vh, 40px) 16px', animation: 'pkpScrim .2s ease',
+      }}
+    >
+      <div role="dialog" aria-modal onClick={(e) => e.stopPropagation()} style={{
+        width, maxWidth: '94%', maxHeight: '92vh', background: 'var(--cream-50)',
         border: '1px solid var(--cream-400)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-xl)',
-        zIndex: 42, display: 'flex', flexDirection: 'column',
+        display: 'flex', flexDirection: 'column',
       }}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--cream-300)', display: 'flex', alignItems: 'flex-start', gap: 12, background: 'var(--white)', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0' }}>
           <div style={{ flex: 1 }}>
@@ -41,7 +46,7 @@ export function Modal({ title, sub, onClose, children, footer, width = 460 }: {
           <div style={{ padding: '14px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10, justifyContent: 'flex-end', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)' }}>{footer}</div>
         )}
       </div>
-    </>
+    </div>
   );
 }
 

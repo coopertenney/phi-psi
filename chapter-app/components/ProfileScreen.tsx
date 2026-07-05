@@ -7,6 +7,9 @@ import { currentMember } from '@/lib/session';
 import { useApp } from './Providers';
 import { Badge, MiniStat } from './ui';
 import { AvatarUpload } from './AvatarUpload';
+import { AccountSettings } from './AccountSettings';
+import { PushNotifications } from './PushNotifications';
+import { LineageTree } from './LineageTree';
 
 type Props = { members: MemberRow[]; myMembershipId: string | null; live?: boolean };
 
@@ -89,6 +92,18 @@ export function ProfileScreen({ members, myMembershipId, live = false }: Props) 
           {detailRow('Littles', me.littleNames.length ? me.littleNames.join(', ') : '—')}
         </div>
       </div>
+
+      {/* Focused lineage diagram — this brother's line (bigs above, littles below). */}
+      {(me.bigName || me.littleNames.length > 0) && (
+        <div className="pkp-card" style={{ padding: 22 }}>
+          <h3 className="pkp-h3" style={{ marginBottom: 12 }}>Your line</h3>
+          <LineageTree members={members} focusName={me.fullName} height={320} />
+        </div>
+      )}
+
+      <PushNotifications />
+
+      <AccountSettings />
 
       {/* Flags */}
       {me.flags.length > 0 && (

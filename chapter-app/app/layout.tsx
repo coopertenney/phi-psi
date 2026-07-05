@@ -1,20 +1,32 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from '@/components/Providers';
 import { AppShell } from '@/components/AppShell';
-import { getMembers, getCurrentUser } from '@/lib/data';
+import { getMembers, getCurrentUser, getMyMembershipId } from '@/lib/data';
+import { isSupabaseConfigured } from '@/lib/supabase/server';
 
 export const metadata: Metadata = {
   title: 'Phi Kappa Psi · Cal Beta',
   description: 'Chapter management dashboard',
+  // Home-screen install: the manifest link is injected automatically from
+  // app/manifest.ts; these add the iOS apple-touch-icon + standalone web-app
+  // hints so an installed icon and title look right on an iPhone.
+  applicationName: 'Phi Psi',
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Phi Psi' },
+  icons: { icon: '/icon-192.png', apple: '/apple-touch-icon.png' },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#9E1B32', // cardinal-500 — colors the mobile status bar
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Roster for the topbar search, fetched server-side so the live query runs
   // with the user's session (RLS). Empty on the logged-out /login render.
-  const [members, currentUser] = await Promise.all([
+  const [members, currentUser, myMembershipId] = await Promise.all([
     getMembers().catch(() => []),
     getCurrentUser().catch(() => null),
+    getMyMembershipId().catch(() => null),
   ]);
   // Derive the sidebar persona from the signed-in user's role so a real member
   // sees member tabs — not whatever's cached in localStorage. Null in mock/demo
@@ -32,7 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           : 'member'
     : null;
   return (
-    <html lang="en" data-theme="cardinal">
+    <html lang="en" data-theme="dark">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
@@ -43,7 +55,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body>
         <Providers signedInPersona={signedInPersona}>
-          <AppShell members={members} currentUser={currentUser}>{children}</AppShell>
+          <AppShell members={members} currentUser={currentUser} myMembershipId={myMembershipId} live={isSupabaseConfigured}>{children}</AppShell>
         </Providers>
       </body>
     </html>

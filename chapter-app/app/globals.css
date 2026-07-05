@@ -54,16 +54,62 @@
   --pkp-side-border:rgba(255,255,255,.14); --pkp-side-hover:rgba(255,255,255,.06);
   --pkp-crest-bg:var(--cardinal-500); --pkp-crest-fg:#fff; --pkp-side-card:rgba(255,255,255,.06);
 }
+/* Dark scheme — neutral palette flipped so every card/sidebar/input becomes a
+   translucent dark glass panel floating over the chapter photo. Components are
+   unchanged; they just read these remapped tokens. */
+[data-theme="dark"] {
+  --cream-50:#0F1211; --cream-100:rgba(255,255,255,.06); --cream-200:rgba(255,255,255,.09); --cream-300:rgba(255,255,255,.14); --cream-400:rgba(255,255,255,.20);
+  /* Muted grays brightened so meta text ("THIS WEEK", event details) clears the
+     photo — worst case (dim text over a bright photo pixel) now passes AA. */
+  --ink-900:#F6F3EC; --ink-800:#ECE8DF; --ink-700:#DCD7CD; --ink-600:#C4BEB2; --ink-500:#B0AA9E; --ink-400:#9A948A; --ink-300:#726D64;
+  --white:rgba(22,26,24,.90);
+  --rule:rgba(255,255,255,.12); --gold-line:rgba(203,170,87,.42);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow-md:0 2px 8px rgba(0,0,0,.42),0 1px 2px rgba(0,0,0,.3);
+  --shadow-lg:0 10px 26px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35);
+  --shadow-xl:0 20px 48px rgba(0,0,0,.6),0 5px 12px rgba(0,0,0,.42);
+
+  --pkp-primary:var(--hunter-500); --pkp-primary-hover:var(--hunter-400); --pkp-primary-strong:#9FD3B6;
+  --pkp-primary-tint:rgba(60,117,88,.20); --pkp-primary-border:rgba(60,117,88,.42);
+  --pkp-accent:var(--gold-400); --pkp-accent-tint:rgba(203,170,87,.14);
+  --pkp-seal:var(--gold-400);
+  --pkp-side-bg:rgba(14,17,16,.78); --pkp-side-fg:#F5F2EA; --pkp-side-muted:rgba(245,242,234,.58);
+  --pkp-side-active-bg:rgba(255,255,255,.09); --pkp-side-active-fg:#FFFFFF; --pkp-side-active-bar:var(--gold-400);
+  --pkp-side-border:rgba(255,255,255,.12); --pkp-side-hover:rgba(255,255,255,.06);
+  --pkp-crest-bg:var(--cardinal-500); --pkp-crest-fg:#fff; --pkp-side-card:rgba(255,255,255,.05);
+}
+/* Frost the floating panels so the photo diffuses behind them. */
+[data-theme="dark"] .pkp-sidebar,
+[data-theme="dark"] .pkp-topbar,
+[data-theme="dark"] .pkp-card,
+[data-theme="dark"] .pkp-drawer { backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+[data-theme="dark"] .pkp-topbar {
+  background:linear-gradient(rgba(16,20,18,.74),rgba(16,20,18,.6));
+  border-bottom-color:rgba(255,255,255,.1);
+}
+/* Crest watermark is invisible at .035 on a dark field — nudge it up. */
+[data-theme="dark"] .pkp-main::before { opacity:.05; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
   font-family: var(--font-sans); color: var(--ink-700);
   background:
-    radial-gradient(1200px 620px at 78% -8%, rgba(154,119,38,.05), transparent 60%),
-    radial-gradient(1000px 560px at -8% 108%, rgba(27,67,50,.05), transparent 62%),
+    linear-gradient(rgba(251,249,243,.86), rgba(251,249,243,.9)),
+    url("/chapter-bg.jpeg") no-repeat center/cover fixed,
     var(--cream-50);
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+/* Dark scheme: let the chapter photo read through, darkened just enough for
+   contrast. The image stays fixed to the viewport while content scrolls. */
+/* Darkened well past the old .55/.7 — and no longer lighter at the top, where the
+   unbacked screen headers sit over the busiest part of the party photo. The image
+   still reads as texture, but light text clears it everywhere now. */
+[data-theme="dark"] body {
+  background:
+    linear-gradient(rgba(11,13,12,.40), rgba(11,13,12,.45)),
+    url("/chapter-bg.jpeg") no-repeat center/cover fixed,
+    #0B0D0C;
 }
 button { font: inherit; }
 @keyframes pkpScrim { from { opacity:0; } to { opacity:1; } }
@@ -80,6 +126,16 @@ button { font: inherit; }
   background:url("/crest.png") no-repeat center/contain; opacity:.035; pointer-events:none; z-index:0;
 }
 .pkp-main-inner { max-width:1200px; margin:0 auto; display:flex; flex-direction:column; gap:20px; position:relative; z-index:1; }
+
+/* Points & Attendance: two self-contained screens side by side, each a stacked
+   card column. Collapses to one column when there isn't room for both. */
+.pkp-pa-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+.pkp-pa-col { display:flex; flex-direction:column; gap:20px; min-width:0; }
+@media (max-width:1080px) { .pkp-pa-grid { grid-template-columns:1fr; } }
+
+/* Socials: agenda list + month calendar */
+.pkp-socials-grid { display:grid; grid-template-columns:1fr 336px; gap:20px; align-items:start; }
+@media (max-width:960px) { .pkp-socials-grid { grid-template-columns:1fr; } .pkp-socials-cal { order:-1; } }
 
 /* ---------- sidebar (chapter masthead) ---------- */
 .pkp-sidebar {
@@ -130,6 +186,8 @@ button { font: inherit; }
 .pkp-pnm-cards { display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
 
 .pkp-topbar-actions { display:flex; align-items:center; gap:16px; }
+.pkp-account-btn { display:flex; align-items:center; gap:9px; padding:6px 10px 6px 6px; border-radius:var(--radius-pill); transition:background .12s; }
+.pkp-account-btn:hover, .pkp-account-btn:focus-visible { background:var(--cream-200); }
 .pkp-hamburger { display:none; }
 .pkp-nav-scrim { display:none; }
 .pkp-drawer-account { display:none; }
@@ -209,6 +267,14 @@ button { font: inherit; }
      them, drop the search onto its own full-width line, buttons flow below. */
   .pkp-files-actions { flex-wrap:wrap; margin-left:0 !important; width:100%; gap:8px !important; }
   .pkp-files-actions .pkp-search { width:100% !important; flex:1 1 100%; }
+
+  /* Members toolbar: the filter chips + Appoint exec / Start new year / Import /
+     Export / Add member cluster is a ~700px row that overflowed a 375px screen
+     (Add member fell off the right, which dragged the whole page into a sideways
+     scroll and clipped the chips at both edges). Stack the chips above the
+     actions and let the buttons wrap — same treatment as the Files toolbar. */
+  .pkp-members-bar { flex-direction:column; align-items:stretch !important; gap:12px !important; }
+  .pkp-members-actions { flex-wrap:wrap; }
 }
 
 /* ---------- generic ---------- */

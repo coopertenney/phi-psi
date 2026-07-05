@@ -31,16 +31,27 @@ export const AUDIENCES: { id: Audience; label: string }[] = [
 export const NAV_TABS: { href: string; id: string; label: string; locked?: boolean; external?: boolean }[] = [
   { href: '/dashboard', id: 'dashboard', label: 'Dashboard', locked: true },
   { href: '/members', id: 'members', label: 'Members' },
+  { href: '/lineage', id: 'lineage', label: 'Lineage' },
   { href: '/recruitment', id: 'recruitment', label: 'Recruitment' },
   { href: '/finances', id: 'finances', label: 'Finances' },
   { href: '/socials', id: 'events', label: 'Socials' },
-  { href: '/attendance', id: 'attendance', label: 'Attendance' },
-  { href: '/points', id: 'points', label: 'Points' },
+  { href: '/points', id: 'points', label: 'Points & Attendance' },
   { href: '/announcements', id: 'announcements', label: 'Announcements' },
   { href: '/files', id: 'files', label: 'Files' },
-  { href: '/profile', id: 'profile', label: 'Profile' },
-  { href: 'https://docs.google.com/spreadsheets/d/1R2aucgm_uYfEp4Nn2PALGDFpHxnbl6uKvY-5UdNC3LY/edit', id: 'menu', label: 'Menu', external: true },
+  { href: 'https://docs.google.com/spreadsheets/d/1R2aucgm_uYfEp4Nn2PALGDFpHxnbl6uKvY-5UdNC3LY/edit?gid=2063656107#gid=2063656107', id: 'menu', label: 'Lunch/Dinner Menu', external: true },
 ];
+
+// The chapter's executive board, in board order. Appointing a slate writes these
+// as memberships.position; the President is additionally granted admin access
+// (access_role='admin') so they can manage tab permissions on the Access screen.
+export const EXEC_OFFICES = [
+  'President', 'Vice President', 'Treasurer', 'Secretary',
+  'Recruitment Chair', 'Social Chair', 'Philanthropy Chair', 'Risk Manager',
+] as const;
+export const PRESIDENT_OFFICE = 'President';
+
+// One officer appointment: which member holds which office.
+export type ExecAssignment = { membershipId: string; office: string };
 
 // admin & exec see exec-level content; member & new see the member views.
 export const roleFor = (p: Persona): 'exec' | 'member' =>

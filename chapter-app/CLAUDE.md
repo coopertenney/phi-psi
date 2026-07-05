@@ -34,6 +34,8 @@ Schema + seed: `../app-foundation/schema.sql` + `seed.sql`.
 - **Members screen is the reference vertical** — table, filter chips (All/Active/New/Officers), detail drawer (scrim + slide-in, stats mini-cards, recent activity). Every other screen follows this pattern. (Jun 24)
 - **Theme + role persistence** — `Providers.tsx` sets `document.documentElement.dataset.theme` in `useEffect` and writes to localStorage so it survives SSR navigation. Three themes: `cardinal`, `hunter`, `heritage`. (Jun 24)
 - **`access_role` vs `position`** — schema splits permissions (`exec`/`member`/`admin`) from display title (e.g. "President"). Don't conflate them.
+- **Cyclable term marker** — the sidebar "current term" is advanced one quarter at a time by admin via `Providers` state (`termOffset`, localStorage `pkp-term-offset`), computed off `BASE_TERM`/`advanceTerm` in `lib/calendar.ts`. Label-only: does NOT re-scope points/dues/attendance (those stay derived from `NOW`). Live seam: `terms.is_current`. (Jul 5)
+- **Appoint exec (succession)** — admin-only "Appoint exec" in `MembersScreen` opens a per-office slate modal (`EXEC_OFFICES` in `lib/nav.ts`). Confirming grants the President `access_role='admin'`, others `exec`+title, and auto-demotes any current officer not in the slate back to member. Live write = `appointExec` in `app/members/actions.ts` (admin-guarded; grants slate first, demotes self last; TODO: memberships role-update RLS). Permissions themselves stay editable anytime on the Access screen. (Jul 5)
 - **`security_invoker = on` on views** — `member_standings` and `member_finances` views use this so they don't bypass base-table RLS. `chapter_stats` is intentionally definer (aggregate only, no per-row secrets).
 - **Profiles decoupled from auth** — `profiles.auth_user_id` is nullable; a profile exists before a login. Simplifies seeding and onboarding flows.
 - **Raw facts, derived numbers** — no stored totals; SQL views compute balances and percentages from `dues_charges`, `payments`, `points_entries`, `attendance`.
@@ -77,7 +79,7 @@ treasurer" instead of a broken button.
 
 - [x] **Finances** — dues table by brother, 3 stat cards (collected/outstanding/overdue); Stripe Checkout wired (card + ACH), gated by the FO on/off switch
 - [x] **Socials** (was Events) — narrowed to `social`+`brotherhood`; week-grouped agenda timeline; exec create/edit + RSVP drawer, member RSVP + history. `/events`→`/socials`. Meetings/attendance moved off (deferred, see ROADMAP); philanthropy/service orphaned for now.
-- [x] **Attendance & Points** — exec meeting grid + points leaderboard; member attendance strip + points breakdown
+- [x] **Points & Attendance** — one tab (`/points`, label "Points & Attendance") rendering the `PointsScreen` and `AttendanceScreen` side by side via `.pkp-pa-grid` (stacks < 1080px). Exec: points leaderboard + meeting grid; member: points breakdown + attendance strip. `/attendance` redirects to `/points`.
 - [x] **Announcements** — audience-gated feed + exec compose
 - [x] **Dashboard** — officer view (events/announcements/leaders/flags); member dues + standing
 - [x] **Recruitment / Rush CRM** — exec funnel + pipeline table + stage controls; member rate/vote/note (`/recruitment`)

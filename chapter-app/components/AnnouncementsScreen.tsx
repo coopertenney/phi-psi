@@ -6,7 +6,7 @@ import type { AnnouncementRow, AnnouncementCategory, AnnouncementAudience } from
 import { relativeDay, type BadgeTone } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { MOCK_USER } from '@/lib/session';
-import { postAnnouncement } from '@/app/announcements/actions';
+import { postAnnouncement, markAnnouncementRead } from '@/app/announcements/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 
@@ -26,34 +26,64 @@ const Pin = (
 const sortFeed = (a: AnnouncementRow, b: AnnouncementRow): number =>
   Number(b.pinned) - Number(a.pinned) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 
-export function AnnouncementsScreen({ announcements, live = false }: { announcements: AnnouncementRow[]; live?: boolean }) {
+export function AnnouncementsScreen({ announcements, myReadIds = [], live = false }: { announcements: AnnouncementRow[]; myReadIds?: string[]; live?: boolean }) {
   const { role } = useApp();
   const [posts, setPosts] = useState<AnnouncementRow[]>(announcements);
   useEffect(() => setPosts(announcements), [announcements]); // follow server refreshes
+
+  // Which announcements this member has read. Seeded from the server, updated
+  // optimistically on "Mark as read".
+  const [readIds, setReadIds] = useState<Set<string>>(() => new Set(myReadIds));
+  useEffect(() => setReadIds(new Set(myReadIds)), [myReadIds]);
 
   const visible = useMemo(
     () => posts.filter((p) => (role === 'exec' ? true : p.audience === 'all')).sort(sortFeed),
     [posts, role],
   );
+  const unreadCount = useMemo(() => visible.filter((a) => !readIds.has(a.id)).length, [visible, readIds]);
 
   const onPost = (a: AnnouncementRow) => setPosts((prev) => [a, ...prev]);
+
+  const markRead = async (id: string) => {
+    setReadIds((prev) => new Set(prev).add(id)); // optimistic
+    if (!live) return;
+    try {
+      await markAnnouncementRead(id);
+    } catch {
+      setReadIds((prev) => { const n = new Set(prev); n.delete(id); return n; }); // revert on failure
+    }
+  };
 
   return (
     <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 18 }}>
       {role === 'exec' && <Compose onPost={onPost} live={live} />}
+      {/* Caught-up state: no announcements at all, or every one already read. */}
+      {unreadCount === 0 && <CaughtUp />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {visible.map((a) => <Card key={a.id} a={a} />)}
+        {visible.map((a) => (
+          <Card key={a.id} a={a} read={readIds.has(a.id)} onMarkRead={() => markRead(a.id)} />
+        ))}
       </div>
     </div>
   );
 }
 
-function Card({ a }: { a: AnnouncementRow }) {
-  const cm = CAT_META[a.category];
+function CaughtUp() {
   return (
-    <div className="pkp-card" style={{ padding: 18, borderLeft: a.pinned ? '3px solid var(--pkp-primary)' : undefined }}>
+    <div className="pkp-card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--success-100, #E8F3EC)', color: 'var(--success-600)' }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+      </span>
+      <span style={{ fontSize: 13.5, color: 'var(--ink-600)' }}>No new announcements — you’re all caught up.</span>
+    </div>
+  );
+}
+
+function Card({ a, read, onMarkRead }: { a: AnnouncementRow; read: boolean; onMarkRead: () => void }) {
+  return (
+    <div className="pkp-card" style={{ padding: 18, borderLeft: a.pinned ? '3px solid var(--pkp-primary)' : undefined, opacity: read ? 0.62 : 1, transition: 'opacity .15s' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, flexWrap: 'wrap' }}>
-        <Badge tone={cm.tone}>{cm.label}</Badge>
+        {!read && <span title="Unread" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--pkp-primary)', flexShrink: 0 }} />}
         {a.audience === 'officers' && <Badge tone="neutral">Officers only</Badge>}
         {a.pinned && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, color: 'var(--pkp-primary)' }}>
@@ -70,6 +100,13 @@ function Card({ a }: { a: AnnouncementRow }) {
           <span style={{ fontWeight: 600, color: 'var(--ink-800)' }}>{a.author}</span>
           <span style={{ color: 'var(--ink-500)' }}> · {a.authorRole}</span>
         </div>
+        {read ? (
+          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-400)' }}>Read</span>
+        ) : (
+          <button className="pkp-btn-ghost" style={{ marginLeft: 'auto', height: 30, padding: '0 12px', fontSize: 12 }} onClick={onMarkRead}>
+            Mark as read
+          </button>
+        )}
       </div>
     </div>
   );

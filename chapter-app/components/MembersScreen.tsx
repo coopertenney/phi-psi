@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { MemberRow, MemberStatus, FlagSeverity } from '@/lib/types';
 import { money, statusBadge, duesBadge, type BadgeTone } from '@/lib/format';
 import { Badge, Chips, AddButton, Drawer } from './ui';
@@ -10,6 +11,8 @@ import { Modal, ModalActions, Field, Select, FieldRow, TextArea, parseCsv, downl
 import { useApp } from './Providers';
 import { NOW } from '@/lib/engagement';
 import { graduatingClassYear, upcomingAcademicYear } from '@/lib/calendar';
+import { EXEC_OFFICES, PRESIDENT_OFFICE, type ExecAssignment } from '@/lib/nav';
+import { appointExec } from '@/app/members/actions';
 
 const CHIPS = [
   { id: 'all', label: 'All members' },
@@ -39,14 +42,17 @@ const topFlag = (m: MemberRow): FlagSeverity | null =>
 const roleLabelFor = (position: string | null, status: MemberStatus): string =>
   position || (status === 'new' ? 'New Member' : 'Brother');
 
-export function MembersScreen({ members }: { members: MemberRow[] }) {
+export function MembersScreen({ members, live = false }: { members: MemberRow[]; live?: boolean }) {
   const { isAdmin } = useApp();
+  const router = useRouter();
   const [roster, setRoster] = useState<MemberRow[]>(members);
+  useEffect(() => setRoster(members), [members]); // follow server refreshes (e.g. after appointing exec)
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
   const [rollingOver, setRollingOver] = useState(false);
+  const [appointing, setAppointing] = useState(false);
   const [editing, setEditing] = useState<MemberRow | null>(null);
 
   // Honor a member focus requested from the topbar search (set in sessionStorage).
@@ -63,6 +69,26 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
   const importClass = (ms: MemberRow[]) => { setRoster((r) => [...ms, ...r]); setImporting(false); setFilter('new'); };
   const startNewYear = () => { setRoster((r) => rolloverRoster(r)); setRollingOver(false); setFilter('active'); };
 
+  // Appoint a new exec slate (succession): assign the selected officers and demote
+  // any current officer not in the slate back to a plain brother. Optimistic local
+  // update; in live mode the server action does the real access_role/position write
+  // (President → admin) and the refresh reconciles.
+  const appointBoard = async (assignments: ExecAssignment[]) => {
+    const slate = new Map(assignments.map((a) => [a.membershipId, a.office]));
+    setRoster((r) => r.map((m) => {
+      const office = slate.get(m.membershipId);
+      if (office) return { ...m, position: office, roleLabel: roleLabelFor(office, m.status) };
+      if (m.position !== null) return { ...m, position: null, roleLabel: roleLabelFor(null, m.status) };
+      return m;
+    }));
+    setAppointing(false);
+    setFilter('officers');
+    if (live) {
+      try { await appointExec(assignments); router.refresh(); }
+      catch (err: any) { alert(err?.message ?? 'Could not appoint the board.'); }
+    }
+  };
+
   const exportCsv = () =>
     downloadCsv(
       'cal-beta-roster.csv',
@@ -72,9 +98,10 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+      <div className="pkp-members-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <Chips options={CHIPS} value={filter} onChange={setFilter} />
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="pkp-members-actions" style={{ display: 'flex', gap: 10 }}>
+          {isAdmin && <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={() => setAppointing(true)}>Appoint exec</button>}
           {isAdmin && <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={() => setRollingOver(true)}>Start new year</button>}
           <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={() => setImporting(true)}>Import class</button>
           <button className="pkp-btn-ghost" style={{ height: 40, padding: '0 16px', fontSize: 13.5 }} onClick={exportCsv}>Export</button>
@@ -122,6 +149,7 @@ export function MembersScreen({ members }: { members: MemberRow[] }) {
       {adding && <MemberFormModal onClose={() => setAdding(false)} onSave={addMember} />}
       {importing && <ImportClassModal onClose={() => setImporting(false)} onImport={importClass} />}
       {rollingOver && <NewYearModal roster={roster} onClose={() => setRollingOver(false)} onConfirm={startNewYear} />}
+      {appointing && <AppointExecModal roster={roster} onClose={() => setAppointing(false)} onConfirm={appointBoard} />}
       {editing && <MemberFormModal base={editing} onClose={() => setEditing(null)} onSave={saveEdit} />}
     </>
   );
@@ -419,6 +447,64 @@ function NewYearModal({ roster, onClose, onConfirm }: { roster: MemberRow[]; onC
           </div>
         ))}
       </div>
+    </Modal>
+  );
+}
+
+// Appoint the executive board. One member per office (blank = leave vacant). The
+// President is granted admin and can manage tab permissions on the Access screen.
+// Confirming demotes any current officer not picked here back to a plain brother.
+function AppointExecModal({ roster, onClose, onConfirm }: {
+  roster: MemberRow[];
+  onClose: () => void;
+  onConfirm: (assignments: ExecAssignment[]) => void;
+}) {
+  // Only active brothers are eligible to hold office.
+  const eligible = useMemo(() => roster.filter((m) => m.status === 'active'), [roster]);
+  // Seed each office with its current holder (if any).
+  const [sel, setSel] = useState<Record<string, string>>(() =>
+    Object.fromEntries(EXEC_OFFICES.map((office) => {
+      const holder = roster.find((m) => m.position === office);
+      return [office, holder?.membershipId ?? ''];
+    })),
+  );
+
+  const assignments: ExecAssignment[] = EXEC_OFFICES
+    .filter((office) => sel[office])
+    .map((office) => ({ membershipId: sel[office]!, office }));
+
+  // A brother assigned to two offices is almost always a mistake — flag it.
+  const dupIds = assignments.map((a) => a.membershipId).filter((id, i, arr) => arr.indexOf(id) !== i);
+  const hasDup = dupIds.length > 0;
+
+  const nameOf = (id: string) => roster.find((m) => m.membershipId === id)?.fullName ?? '';
+
+  return (
+    <Modal
+      title="Appoint executive board"
+      sub="Assign officers for the new term"
+      width={480}
+      onClose={onClose}
+      footer={<ModalActions onCancel={onClose} onSave={() => onConfirm(assignments)} canSave={!hasDup} saveLabel="Appoint board" />}
+    >
+      <div style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.5 }}>
+        The <strong>President</strong> is granted admin access and can manage tab permissions at any time.
+        Any current officer not selected below is returned to a regular brother.
+      </div>
+      {EXEC_OFFICES.map((office) => (
+        <Select
+          key={office}
+          label={office === PRESIDENT_OFFICE ? 'President (admin)' : office}
+          value={sel[office] ?? ''}
+          onChange={(e) => setSel((s) => ({ ...s, [office]: e.target.value }))}
+          options={[{ value: '', label: '— Vacant —' }, ...eligible.map((m) => ({ value: m.membershipId, label: m.fullName }))]}
+        />
+      ))}
+      {hasDup && (
+        <div style={{ fontSize: 12.5, color: 'var(--pkp-primary)' }}>
+          {nameOf(dupIds[0])} is assigned to more than one office — give each brother a single office.
+        </div>
+      )}
     </Modal>
   );
 }

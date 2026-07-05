@@ -3,6 +3,7 @@
 import { getServerSupabase } from '@/lib/supabase/server';
 import { requireMembershipId } from '@/lib/membership';
 import { CHAPTER_ID } from '@/lib/chapter';
+import { sendPushToChapter, isPushConfigured } from '@/lib/push';
 
 export interface EventInput {
   title: string;
@@ -11,8 +12,10 @@ export interface EventInput {
   endsAt: string | null;
   location: string;
   description: string;
-  mandatory: boolean;
-  pointsValue: number;
+  // Client-formatted "Fri, Apr 17, 9:00 PM" for the creation notification —
+  // formatted on the client so it reflects the chapter's timezone, not the
+  // server's (Vercel runs UTC).
+  whenLabel?: string;
 }
 
 const toRow = (i: EventInput) => ({
@@ -22,15 +25,48 @@ const toRow = (i: EventInput) => ({
   ends_at: i.endsAt,
   location: i.location,
   description: i.description,
-  required: i.mandatory,
-  points: i.pointsValue,
+  // Socials are never mandatory and never carry points or attendance — enforced
+  // here so the DB row is authoritative no matter what the client sends.
+  required: false,
+  points: 0,
 });
+
+// The signed-in user's profile id, so we can skip notifying the creator about
+// their own event. Null if not resolvable (never blocks the action).
+async function currentProfileId(sb: ReturnType<typeof getServerSupabase>): Promise<string | null> {
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) return null;
+  const { data } = await sb.from('profiles').select('id').eq('auth_user_id', user.id).maybeSingle();
+  return data?.id ?? null;
+}
 
 // Create / edit / delete are exec-only — RLS (events_cud) enforces it server-side.
 export async function createEvent(input: EventInput) {
   const sb = getServerSupabase();
   const { error } = await sb.from('events').insert({ chapter_id: CHAPTER_ID, ...toRow(input) });
   if (error) throw new Error(error.message);
+
+  // Best-effort: push a heads-up to the chapter that a new social is on the
+  // calendar. A push failure must never fail the event creation, so it's
+  // wrapped and swallowed.
+  if (isPushConfigured) {
+    try {
+      const creatorProfileId = await currentProfileId(sb);
+      const parts = [input.whenLabel, input.location].filter(Boolean);
+      await sendPushToChapter(
+        CHAPTER_ID,
+        {
+          title: `New social: ${input.title}`,
+          body: parts.length ? parts.join(' · ') : 'Tap to RSVP on the Socials tab.',
+          url: '/socials',
+          tag: 'social-new',
+        },
+        { excludeProfileId: creatorProfileId },
+      );
+    } catch {
+      /* notification is best-effort — ignore */
+    }
+  }
 }
 
 export async function updateEvent(id: string, input: EventInput) {
@@ -64,41 +100,6 @@ export async function setRsvp(eventId: string, status: 'going' | 'maybe' | 'no' 
   if (error) throw new Error(error.message);
 }
 
-// Exec live check-in. Backs each event with a `meetings` row (find-or-create,
-// linked via meetings.event_id) so attendance rolls into the same table the
-// Attendance screen reads — one fact table, two views onto it.
-export async function setAttendance(eventId: string, membershipId: string, present: boolean) {
-  const sb = getServerSupabase();
-
-  const { data: ev, error: eErr } = await sb.from('events').select('name, starts_at, chapter_id').eq('id', eventId).maybeSingle();
-  if (eErr) throw new Error(eErr.message);
-  if (!ev) throw new Error('Event not found');
-
-  const { data: existing } = await sb.from('meetings').select('id').eq('event_id', eventId).maybeSingle();
-  let meetingId = existing?.id as string | undefined;
-  if (!meetingId) {
-    const { data: created, error: mErr } = await sb
-      .from('meetings')
-      .insert({ chapter_id: ev.chapter_id, event_id: eventId, title: ev.name, held_on: String(ev.starts_at).slice(0, 10) })
-      .select('id')
-      .single();
-    if (mErr) {
-      // Unique violation (23505) means another concurrent check-in already
-      // created the meeting for this event — fetch it instead of failing.
-      if (mErr.code !== '23505') throw new Error(mErr.message);
-      const { data: raced } = await sb.from('meetings').select('id').eq('event_id', eventId).maybeSingle();
-      if (!raced) throw new Error(mErr.message);
-      meetingId = raced.id;
-    } else {
-      meetingId = created.id;
-    }
-  }
-
-  const { error } = await sb
-    .from('attendance')
-    .upsert(
-      { meeting_id: meetingId, membership_id: membershipId, state: present ? 'present' : 'absent' },
-      { onConflict: 'meeting_id,membership_id' },
-    );
-  if (error) throw new Error(error.message);
-}
+// Note: socials never carry attendance or points — RSVPs are the only per-member
+// signal here. Meeting attendance lives on the Attendance tab, keyed off
+// `meetings`, not events.
