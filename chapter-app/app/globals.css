@@ -374,3 +374,18 @@ button { font: inherit; }
   .pkp-auth-tag { display:none; }
   .pkp-auth-panel { padding:28px 20px 40px; }
 }
+
+/* ---------- "new version available" toast (VersionWatcher) ---------- */
+.pkp-update-toast {
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:calc(18px + env(safe-area-inset-bottom, 0px)); z-index:200;
+  display:inline-flex; align-items:center; gap:9px;
+  padding:11px 18px; border:none; cursor:pointer;
+  background:var(--cardinal-500); color:#fff;
+  font-family:var(--font-sans); font-size:13.5px; font-weight:600;
+  border-radius:var(--radius-pill); box-shadow:var(--shadow-lg);
+  animation:pkp-update-in .28s ease;
+}
+.pkp-update-toast:hover { filter:brightness(1.06); }
+.pkp-update-dot { width:8px; height:8px; border-radius:50%; background:#fff; opacity:.9; flex-shrink:0; }
+@keyframes pkp-update-in { from { opacity:0; transform:translate(-50%,12px); } to { opacity:1; transform:translate(-50%,0); } }

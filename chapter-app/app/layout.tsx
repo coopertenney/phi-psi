@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Providers } from '@/components/Providers';
 import { AppShell } from '@/components/AppShell';
+import { VersionWatcher } from '@/components/VersionWatcher';
 import { getMembers, getCurrentUser, getMyMembershipId } from '@/lib/data';
 import { isSupabaseConfigured } from '@/lib/supabase/server';
 
@@ -11,8 +12,8 @@ export const metadata: Metadata = {
   // Home-screen install: the manifest link is injected automatically from
   // app/manifest.ts; these add the iOS apple-touch-icon + standalone web-app
   // hints so an installed icon and title look right on an iPhone.
-  applicationName: 'Phi Psi',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Phi Psi' },
+  applicationName: 'PKP',
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'PKP' },
   icons: { icon: '/icon-192.png', apple: '/apple-touch-icon.png' },
 };
 
@@ -56,6 +57,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body>
         <Providers signedInPersona={signedInPersona}>
           <AppShell members={members} currentUser={currentUser} myMembershipId={myMembershipId} live={isSupabaseConfigured}>{children}</AppShell>
+          <VersionWatcher />
         </Providers>
       </body>
     </html>
