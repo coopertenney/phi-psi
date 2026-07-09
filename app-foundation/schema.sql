@@ -27,7 +27,6 @@ create extension if not exists "pgcrypto";  -- for gen_random_uuid()
 create type member_status   as enum ('active', 'new', 'inactive');
 create type access_role      as enum ('member', 'exec', 'admin');
 create type event_type       as enum ('chapter', 'philanthropy', 'social', 'recruitment', 'service', 'other');
-create type rsvp_status       as enum ('going', 'maybe', 'declined', 'no_response');
 create type attendance_state as enum ('present', 'excused', 'absent');
 create type payment_status    as enum ('succeeded', 'pending', 'failed', 'refunded');
 
@@ -91,7 +90,9 @@ create table terms (
 create index on terms (chapter_id);
 
 -- ---------------------------------------------------------------------------
--- Events + RSVPs
+-- Events
+-- RSVPs are handled entirely in Partiful (each social carries an optional
+-- partiful_url — see events-partiful.sql). The app stores no per-member RSVP.
 -- ---------------------------------------------------------------------------
 create table events (
   id           uuid primary key default gen_random_uuid(),
@@ -107,15 +108,6 @@ create table events (
   created_at   timestamptz not null default now()
 );
 create index on events (chapter_id, starts_at);
-
-create table rsvps (
-  id            uuid primary key default gen_random_uuid(),
-  event_id      uuid not null references events (id) on delete cascade,
-  membership_id uuid not null references memberships (id) on delete cascade,
-  status        rsvp_status not null default 'going',
-  created_at    timestamptz not null default now(),
-  unique (event_id, membership_id)
-);
 
 -- ---------------------------------------------------------------------------
 -- Meetings + attendance  (drives "attendance %" and "last 8 meetings")
@@ -278,13 +270,16 @@ left join (
 create view chapter_stats as
 select
   m.chapter_id,
+  -- Alumni (status 'inactive') are lineage-only and must never surface in any
+  -- user-facing stat, so every count/sum here filters them out (not just the
+  -- active/attendance ones). Their dues/attendance rows are empty anyway.
   count(*) filter (where m.status <> 'inactive')               as active_members,
-  count(*)                                                     as total_members,
-  count(*) filter (where f.dues_state = 'paid')                as paid_count,
-  count(*) filter (where f.dues_state = 'partial')             as partial_count,
-  count(*) filter (where f.dues_state = 'due')                 as due_count,
-  sum(f.paid_cents)                                            as collected_cents,
-  sum(f.charged_cents)                                         as target_cents,
+  count(*) filter (where m.status <> 'inactive')               as total_members,
+  count(*) filter (where m.status <> 'inactive' and f.dues_state = 'paid')    as paid_count,
+  count(*) filter (where m.status <> 'inactive' and f.dues_state = 'partial') as partial_count,
+  count(*) filter (where m.status <> 'inactive' and f.dues_state = 'due')     as due_count,
+  sum(f.paid_cents)   filter (where m.status <> 'inactive')    as collected_cents,
+  sum(f.charged_cents) filter (where m.status <> 'inactive')   as target_cents,
   round(avg(att.attendance_pct) filter (where m.status <> 'inactive')) as avg_attendance_pct
 from memberships m
 left join (
@@ -386,6 +381,6 @@ create policy payments_read on payments
 create policy ann_read  on announcements for select using (is_chapter_member(chapter_id));
 create policy ann_write on announcements for insert with check (is_chapter_exec(chapter_id));
 
--- NOTE: events, rsvps, meetings, points, etc. need their own policies too —
--- same pattern (read = is_chapter_member, write = is_chapter_exec, with RSVPs
--- writable by the member themselves). Left as the obvious next pass.
+-- NOTE: events, meetings, points, etc. need their own policies too — same
+-- pattern (read = is_chapter_member, write = is_chapter_exec). Left as the
+-- obvious next pass. (RSVPs are handled in Partiful, not the DB.)

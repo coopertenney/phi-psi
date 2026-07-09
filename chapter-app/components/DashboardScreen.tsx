@@ -1,29 +1,29 @@
 'use client';
 
+import { useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import type {
-  MemberRow, ChapterStats, EventRow, AnnouncementRow, RsvpState, FlagSeverity,
+  MemberRow, ChapterStats, EventRow, AnnouncementRow,
 } from '@/lib/types';
-import { money, duesBadge, fmtWeekday, fmtTime, relativeDay, type BadgeTone } from '@/lib/format';
+import { money, duesBadge, fmtWeekday, fmtTime, relativeDay } from '@/lib/format';
 import {
   duesFor, currentMember,
 } from '@/lib/session';
-import { NOW, rsvpFor } from '@/lib/engagement';
+import { NOW } from '@/lib/engagement';
+import { markAnnouncementsRead } from '@/app/announcements/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge } from './ui';
+import { Badge } from './ui';
+import { MemberAvatar } from './MemberAvatar';
 import { PaidPill } from './FinancesScreen';
 
-type Props = { members: MemberRow[]; stats: ChapterStats; events: EventRow[]; announcements: AnnouncementRow[]; myMembershipId?: string | null };
+type Props = {
+  members: MemberRow[]; stats: ChapterStats; events: EventRow[]; announcements: AnnouncementRow[];
+  myMembershipId?: string | null; myReadIds?: string[]; live?: boolean;
+};
 
 const isPast = (e: EventRow): boolean => new Date(e.startsAt).getTime() < NOW.getTime();
 const upcomingEvents = (events: EventRow[]): EventRow[] =>
   events.filter((e) => !isPast(e)).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-
-const RSVP_META: Record<RsvpState, { tone: BadgeTone; label: string }> = {
-  going: { tone: 'success', label: 'Going' },
-  maybe: { tone: 'warning', label: 'Maybe' },
-  no: { tone: 'neutral', label: 'Not going' },
-};
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function MiniDate({ iso }: { iso: string }) {
@@ -36,7 +36,7 @@ function MiniDate({ iso }: { iso: string }) {
   );
 }
 
-export function DashboardScreen({ members, stats, events, announcements, myMembershipId = null }: Props) {
+export function DashboardScreen({ members, stats, events, announcements, myMembershipId = null, myReadIds = [], live = false }: Props) {
   const { role, persona } = useApp();
   if (role === 'member') {
     // Live: resolve the signed-in member by real membership id; mock/demo: fall
@@ -44,14 +44,48 @@ export function DashboardScreen({ members, stats, events, announcements, myMembe
     const me = myMembershipId
       ? members.find((m) => m.membershipId === myMembershipId)
       : currentMember(members, persona);
-    if (me) return <MemberDashboard member={me} events={events} />;
+    if (me) return <MemberDashboard member={me} members={members} events={events} />;
   }
-  return <ExecDashboard members={members} stats={stats} events={events} announcements={announcements} />;
+  return <ExecDashboard members={members} stats={stats} events={events} announcements={announcements} myReadIds={myReadIds} live={live} />;
+}
+
+/* Points leaderboard card — the top-5 by points, shared by both the officer and
+   member dashboards. `highlightId` marks the signed-in member's own row. */
+function PointsLeadersCard({ members, highlightId }: { members: MemberRow[]; highlightId?: string | null }) {
+  const leaders = [...members].sort((a, b) => b.points - a.points).slice(0, 5);
+  // Clamp to the top positive total — points can be ≤0 (−5 floor), so a negative
+  // member must render as an empty bar, not a negative width.
+  const topPoints = Math.max(1, ...leaders.map((m) => Math.max(0, m.points)));
+  return (
+    <div className="pkp-card" style={{ padding: 20 }}>
+      <h3 className="pkp-h3" style={{ marginBottom: 14 }}>Points leaders</h3>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {leaders.map((m, i) => {
+          const isMe = !!highlightId && m.membershipId === highlightId;
+          return (
+            <div key={m.membershipId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
+              <div className="pkp-mono" style={{ width: 18, textAlign: 'center', fontSize: 13, fontWeight: 700, color: i < 3 ? 'var(--pkp-primary)' : 'var(--ink-400)' }}>{i + 1}</div>
+              <MemberAvatar name={m.fullName} src={m.avatarUrl} size={28} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--pkp-primary)' : 'var(--ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {m.fullName}{isMe && ' · You'}
+                </div>
+                <div style={{ height: 5, borderRadius: 999, background: 'var(--cream-300)', overflow: 'hidden', marginTop: 5 }}>
+                  <div style={{ width: `${(Math.max(0, m.points) / topPoints) * 100}%`, height: '100%', borderRadius: 999, background: 'var(--pkp-accent)' }} />
+                </div>
+              </div>
+              <div className="pkp-mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-700)' }}>{m.points}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 /* ─────────────────────────── Member: dues front and center ─────────────────────────── */
 
-function MemberDashboard({ member: m, events }: { member: MemberRow; events: EventRow[] }) {
+function MemberDashboard({ member: m, members, events }: { member: MemberRow; members: MemberRow[]; events: EventRow[] }) {
   const { termLabel } = useApp();
   const db = duesBadge(m.duesState);
   const dues = duesFor(m);
@@ -60,7 +94,8 @@ function MemberDashboard({ member: m, events }: { member: MemberRow; events: Eve
   const next = upcomingEvents(events).slice(0, 3);
 
   return (
-    <>
+    <div className="pkp-grid-main" style={{ gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {settled ? (
         <PaidPill label="Dues paid in full" sub={termLabel} />
       ) : (
@@ -103,42 +138,51 @@ function MemberDashboard({ member: m, events }: { member: MemberRow; events: Eve
       <div className="pkp-card" style={{ padding: 20 }}>
         <h3 className="pkp-h3" style={{ marginBottom: 14 }}>Coming up</h3>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {next.map((e, i) => {
-            const r = rsvpFor(m.membershipId, e.id, e.type, e.mandatory);
-            return (
-              <Link key={e.id} href="/socials" onClick={() => sessionStorage.setItem('pkp-focus-event', e.id)}
-                className="pkp-rowlink" style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: i ? '1px solid var(--cream-200)' : 'none', borderRadius: i ? 0 : 'var(--radius-sm)' }}>
-                <MiniDate iso={e.startsAt} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-900)' }}>{e.title}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>{relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)}</div>
-                </div>
-                {r ? <Badge tone={RSVP_META[r].tone}>{RSVP_META[r].label}</Badge> : <Badge tone="neutral">No RSVP</Badge>}
-              </Link>
-            );
-          })}
+          {next.map((e, i) => (
+            <Link key={e.id} href="/socials" onClick={() => sessionStorage.setItem('pkp-focus-event', e.id)}
+              className="pkp-rowlink" style={{ display: 'flex', alignItems: 'center', gap: 12, borderTop: i ? '1px solid var(--cream-200)' : 'none', borderRadius: i ? 0 : 'var(--radius-sm)' }}>
+              <MiniDate iso={e.startsAt} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--ink-900)' }}>{e.title}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>{relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)}</div>
+              </div>
+            </Link>
+          ))}
         </div>
       </div>
-    </>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <PointsLeadersCard members={members} highlightId={m.membershipId} />
+      </div>
+    </div>
   );
 }
 
 /* ─────────────────────────── Exec: officer dashboard ─────────────────────────── */
 
-const FLAG_TONE: Record<FlagSeverity, BadgeTone> = { danger: 'danger', warning: 'warning', info: 'info' };
-const topFlag = (m: MemberRow): FlagSeverity =>
-  m.flags.some((f) => f.severity === 'danger') ? 'danger'
-  : m.flags.some((f) => f.severity === 'warning') ? 'warning' : 'info';
-
-function ExecDashboard({ members, events, announcements }: Props) {
+function ExecDashboard({ members, events, announcements, myReadIds = [], live = false }: Props) {
   const next = upcomingEvents(events).slice(0, 4);
-  const leaders = [...members].sort((a, b) => b.points - a.points).slice(0, 5);
-  // Clamp to the top positive total — points can be ≤0 (−5 floor), so a negative
-  // member must render as an empty bar, not a negative width.
-  const topPoints = Math.max(1, ...leaders.map((m) => Math.max(0, m.points)));
-  const feed = [...announcements].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 3);
-  const flagged = members.filter((m) => m.flags.length > 0)
-    .sort((a, b) => Number(topFlag(b) === 'danger') - Number(topFlag(a) === 'danger'));
+  const feed = useMemo(
+    () => [...announcements].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 3),
+    [announcements],
+  );
+
+  // Auto-mark on view: the moment the dashboard feed is on screen, persist a
+  // "read" row for every announcement it shows that the exec hasn't read yet —
+  // no manual click. A ref tracks what we've sent so re-renders don't re-POST.
+  // Live only; mock mode has no read store. Mirrors AnnouncementsScreen.
+  const readIds = useMemo(() => new Set(myReadIds), [myReadIds]);
+  const sentRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!live) return;
+    const toMark = feed.map((a) => a.id).filter((id) => !readIds.has(id) && !sentRef.current.has(id));
+    if (toMark.length === 0) return;
+    toMark.forEach((id) => sentRef.current.add(id));
+    markAnnouncementsRead(toMark).catch(() => {
+      toMark.forEach((id) => sentRef.current.delete(id)); // let a later render retry
+    });
+  }, [feed, readIds, live]);
 
   return (
     <>
@@ -158,7 +202,6 @@ function ExecDashboard({ members, events, announcements }: Props) {
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>{fmtWeekday(e.startsAt)} · {fmtTime(e.startsAt)} · {e.location}</div>
                   </div>
-                  <div className="pkp-mono pkp-r" style={{ fontSize: 13, color: 'var(--ink-600)', flexShrink: 0 }}>{e.rsvp.going} going</div>
                 </Link>
               ))}
             </div>
@@ -181,44 +224,7 @@ function ExecDashboard({ members, events, announcements }: Props) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="pkp-card" style={{ padding: 20 }}>
-            <h3 className="pkp-h3" style={{ marginBottom: 14 }}>Points leaders</h3>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {leaders.map((m, i) => (
-                <div key={m.membershipId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
-                  <div className="pkp-mono" style={{ width: 18, textAlign: 'center', fontSize: 13, fontWeight: 700, color: i < 3 ? 'var(--pkp-primary)' : 'var(--ink-400)' }}>{i + 1}</div>
-                  <Avatar name={m.fullName} size={28} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.fullName}</div>
-                    <div style={{ height: 5, borderRadius: 999, background: 'var(--cream-300)', overflow: 'hidden', marginTop: 5 }}>
-                      <div style={{ width: `${(Math.max(0, m.points) / topPoints) * 100}%`, height: '100%', borderRadius: 999, background: 'var(--pkp-accent)' }} />
-                    </div>
-                  </div>
-                  <div className="pkp-mono" style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-700)' }}>{m.points}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="pkp-card" style={{ padding: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 className="pkp-h3">Needs attention</h3>
-              <span className="pkp-mono" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--pkp-primary)' }}>{flagged.length}</span>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {flagged.map((m, i) => (
-                <div key={m.membershipId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
-                  <Avatar name={m.fullName} size={28} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--ink-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.flags[0].label}</div>
-                  </div>
-                  <Badge tone={FLAG_TONE[topFlag(m)]}>{m.flags.length}</Badge>
-                </div>
-              ))}
-              {flagged.length === 0 && <div style={{ fontSize: 13, color: 'var(--ink-500)' }}>All clear.</div>}
-            </div>
-          </div>
+          <PointsLeadersCard members={members} />
         </div>
       </div>
     </>

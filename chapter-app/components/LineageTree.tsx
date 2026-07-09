@@ -136,7 +136,11 @@ export function LineageTree({
 
   const nodeEls = [...pos.values()].map((p) => {
     const col = BAND[((p.depth % BAND.length) + BAND.length) % BAND.length];
-    const isMember = !!p.member;
+    // "Current brother" = an active/new member row. Alumni are faded — whether
+    // they're name-only anchors (p.member null) or inactive membership rows that
+    // exist only to carry their lineage history. Keying on status (not just row
+    // presence) keeps every alum styled the same, per the page legend.
+    const isCurrent = !!p.member && p.member.status !== 'inactive';
     const isFocus = p.name === focusName;
     const traced = !!chain && chain.has(p.name);
     const [l1, l2] = twoLines(p.name);
@@ -144,10 +148,10 @@ export function LineageTree({
       <g key={p.name} transform={`translate(${p.x},${p.y})`}
          style={{ cursor: interactive ? 'pointer' : 'default', opacity: dim(p.name), transition: 'opacity .15s' }}
          onClick={interactive ? (e) => { e.stopPropagation(); setPicked((cur) => (cur === p.name ? null : p.name)); } : undefined}>
-        <circle r={R} fill={col} opacity={isMember ? 1 : 0.4}
-                stroke={isFocus ? 'var(--pkp-primary-strong, #7a1420)' : traced ? 'var(--pkp-primary, #8c1d2c)' : isMember ? '#241f18' : 'none'}
-                strokeWidth={isFocus ? 3.5 : traced ? 3 : isMember ? 1.4 : 0} />
-        <text textAnchor="middle" fill="#241f18" fontSize={8.4} fontWeight={isMember ? 700 : 500}
+        <circle r={R} fill={col} opacity={isCurrent ? 1 : 0.4}
+                stroke={isFocus ? 'var(--pkp-primary-strong, #7a1420)' : traced ? 'var(--pkp-primary, #8c1d2c)' : isCurrent ? '#241f18' : 'none'}
+                strokeWidth={isFocus ? 3.5 : traced ? 3 : isCurrent ? 1.4 : 0} />
+        <text textAnchor="middle" fill="#241f18" fontSize={8.4} fontWeight={isCurrent ? 700 : 500}
               style={{ pointerEvents: 'none', userSelect: 'none' }}>
           <tspan x={0} y={l2 ? -1.5 : 2}>{l1}</tspan>
           {l2 && <tspan x={0} y={8}>{l2}</tspan>}

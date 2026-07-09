@@ -1,4 +1,4 @@
-import { getMembers, getPointEntries, getPointItems, getMeetings, getAttendance, getMemberTermStatuses, getMyMembershipId } from '@/lib/data';
+import { getMembers, getPointEntries, getPointItems, getMeetings, getAttendance, getMemberTermStatuses, getMyMembershipId, getChapterSettings } from '@/lib/data';
 import { isSupabaseConfigured } from '@/lib/supabase/server';
 import { PointsScreen } from '@/components/PointsScreen';
 import { AttendanceScreen } from '@/components/AttendanceScreen';
@@ -9,13 +9,13 @@ import { AttendanceScreen } from '@/components/AttendanceScreen';
 // myMembershipId lets each half resolve the signed-in member in live mode (the
 // persona-name lookup only works on mock data).
 export default async function PointsPage() {
-  const [members, entries, items, meetings, attendance, termStatuses, myMembershipId] = await Promise.all([
-    getMembers(), getPointEntries(), getPointItems(), getMeetings(), getAttendance(), getMemberTermStatuses(), getMyMembershipId(),
+  const [members, entries, items, meetings, attendance, termStatuses, myMembershipId, settings] = await Promise.all([
+    getMembers(), getPointEntries(), getPointItems(), getMeetings(), getAttendance(), getMemberTermStatuses(), getMyMembershipId(), getChapterSettings(),
   ]);
   return (
     <div className="pkp-pa-grid">
       <div className="pkp-pa-col">
-        <PointsScreen members={members} entries={entries} items={items} live={isSupabaseConfigured} myMembershipId={myMembershipId} />
+        <PointsScreen members={members} entries={entries} items={items} settings={settings} live={isSupabaseConfigured} myMembershipId={myMembershipId} />
       </div>
       <div className="pkp-pa-col">
         <AttendanceScreen members={members} meetings={meetings} attendance={attendance} memberTermStatuses={termStatuses} myMembershipId={myMembershipId} live={isSupabaseConfigured} />

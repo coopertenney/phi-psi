@@ -22,8 +22,15 @@ import type { PointEntry } from './types';
       member with more formals than absences still LOSES points — likely a sheet
       bug, not intended logic. */
 
-// Points can't drop below this, no matter how many punishments stack up.
+// Default floor: points can't drop below this, no matter how many punishments
+// stack up. The chapter can override it (and add a ceiling) via ScoreConfig.
 export const POINT_FLOOR = -5;
+
+// Chapter-configurable scoring bounds (from chapters.points_floor/ceiling).
+export interface ScoreConfig {
+  floor?: number;
+  ceiling?: number | null;
+}
 
 export const entriesFor = (entries: PointEntry[], membershipId: string): PointEntry[] =>
   entries.filter((e) => e.membershipId === membershipId);
@@ -37,10 +44,13 @@ export const pendingFor = (entries: PointEntry[], membershipId: string): PointEn
 // proposal, not points. Mirrors member_standings' `where status = 'approved'`.
 const approved = (entries: PointEntry[]): PointEntry[] => entries.filter((e) => e.status === 'approved');
 
-// A member's standing: floor applied to the sum of their APPROVED entries.
-export function memberPointTotal(entries: PointEntry[], membershipId: string): number {
+// A member's standing: the sum of their APPROVED entries, clamped to the
+// chapter's floor (and ceiling, if set). Reset-each-term is applied by the
+// caller pre-filtering `entries` to the current term — this stays term-agnostic.
+export function memberPointTotal(entries: PointEntry[], membershipId: string, cfg: ScoreConfig = {}): number {
   const sum = approved(entriesFor(entries, membershipId)).reduce((a, e) => a + e.points, 0);
-  return Math.max(POINT_FLOOR, sum);
+  const capped = cfg.ceiling != null ? Math.min(cfg.ceiling, sum) : sum;
+  return Math.max(cfg.floor ?? POINT_FLOOR, capped);
 }
 
 // Points earned/lost in the trailing 7 days — the site's analog of the sheet's

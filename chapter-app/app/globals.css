@@ -194,6 +194,31 @@ button { font: inherit; }
 
 /* ---------- mobile: sidebar becomes a slide-in drawer ---------- */
 @media (max-width: 860px) {
+  /* Chapter photo on phones — two problems the desktop doesn't have:
+     1. iOS Safari ignores `background-attachment: fixed` and sizes `cover` to the
+        whole document, so the body photo becomes a giant crop that scrolls with
+        content (the app is an installed iOS PWA — this is the real target). Render
+        it instead as a viewport-fixed layer, which iOS and Chrome both honor.
+     2. `cover` on a wide party photo zooms into a busy crop right where content
+        lands, and summary stat rows (Finances, Recruitment) sit *unbacked* over
+        it. Deepen the overlay so the photo reads as faint dark texture, the glass
+        cards pop, and unbacked text stays legible. Same image + identity, calmer.
+     The fixed ::after paints over body's own solid background but behind the app
+     content, so cards and text sit cleanly on top. */
+  body { background: var(--cream-50); }
+  [data-theme="dark"] body { background: #0B0D0C; }
+  body::after {
+    content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      linear-gradient(rgba(251,249,243,.86), rgba(251,249,243,.9)),
+      url("/chapter-bg.jpeg") no-repeat center/cover;
+  }
+  [data-theme="dark"] body::after {
+    background:
+      linear-gradient(rgba(11,13,12,.80), rgba(11,13,12,.86)),
+      url("/chapter-bg.jpeg") no-repeat center/cover;
+  }
+
   .pkp-sidebar {
     position:fixed; top:0; left:0; z-index:60; height:100%; width:274px;
     transform:translateX(-100%); transition:transform .22s ease;
@@ -203,7 +228,12 @@ button { font: inherit; }
   .pkp-app.nav-open .pkp-nav-scrim { opacity:1; pointer-events:auto; }
 
   .pkp-hamburger { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; margin-left:-8px; border:none; background:transparent; color:var(--ink-800); cursor:pointer; border-radius:var(--radius-md); flex-shrink:0; }
-  .pkp-topbar { height:64px; padding:0 14px; gap:8px; }
+  /* Desktop lays the topbar out with space-between (masthead left, actions
+     right). On mobile the actions are hidden, which would strand the masthead
+     against the right edge — pack it left, right after the hamburger, matching
+     desktop's left-aligned title. */
+  .pkp-topbar { height:64px; padding:0 14px; gap:10px; justify-content:flex-start; }
+  .pkp-masthead { flex:1 1 auto; }
   .pkp-topbar::after { left:14px; }
   .pkp-title { font-size:20px; }
   .pkp-topbar-actions { display:none; }
@@ -249,9 +279,9 @@ button { font: inherit; }
   /* Recruitment PNM cards: one per row instead of two. */
   .pkp-pnm-cards { grid-template-columns:1fr; }
 
-  /* Socials list rows: drop the RSVP bar + "going" count (132px on the right)
-     so the title/meta get the full width instead of wrapping to 4–5 lines.
-     Tapping the row opens the drawer, where the RSVP breakdown lives. */
+  /* Socials list rows: drop the "Partiful" indicator on the right so the
+     title/meta get the full width. Tapping the row opens the drawer, which
+     carries the Partiful invite button. */
   .pkp-evt-rsvp { display:none; }
 
   /* Attendance exec grid: the per-meeting dot strip can't sit beside a 190px

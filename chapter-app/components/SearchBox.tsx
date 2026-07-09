@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MemberRow } from '@/lib/types';
-import { Avatar } from './ui';
+import { MemberAvatar } from './MemberAvatar';
 import { icons } from './icons';
 
 // Real chapter search: filters the roster and jumps to the member (the Members
@@ -60,7 +60,7 @@ export function SearchBox({ members }: { members: MemberRow[] }) {
               style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: 'var(--radius-sm)', textAlign: 'left' }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--cream-100)')}
               onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-              <Avatar name={m.fullName} size={28} />
+              <MemberAvatar name={m.fullName} src={m.avatarUrl} size={28} />
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</div>
                 <div style={{ fontSize: 11.5, color: 'var(--ink-500)' }}>{m.roleLabel} · {m.committee}</div>

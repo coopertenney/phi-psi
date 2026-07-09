@@ -7,7 +7,7 @@ import type { MetadataRoute } from 'next';
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Phi Kappa Psi · Cal Beta',
-    short_name: 'Phi Psi',
+    short_name: 'PKP',
     description: 'Chapter management dashboard',
     start_url: '/',
     display: 'standalone',

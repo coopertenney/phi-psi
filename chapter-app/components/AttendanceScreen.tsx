@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MemberRow, MeetingRow, AttendanceRecord, AttendanceState, MemberTermStatus, TermStatusKind } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
+import { weeklyMeetingDates } from '@/lib/calendar';
 import { currentMember } from '@/lib/session';
-import { recordAttendance, setTermStatus, clearTermStatus, setMeetingCheckin, checkinStatus, selfCheckIn } from '@/app/points/actions';
+import { recordAttendance, scheduleMeetings, setTermStatus, clearTermStatus, setMeetingCheckin, checkinStatus, selfCheckIn } from '@/app/points/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge, StatCards } from './ui';
+import { Badge, StatCards } from './ui';
+import { MemberAvatar } from './MemberAvatar';
 import { Modal, ModalActions, Field, Select } from './form';
 
 const ATT_COLOR: Record<AttendanceState, string> = {
@@ -133,21 +135,31 @@ function ExecAttendance({ members, meetings: propMeetings, attendance, memberTer
   const [taking, setTaking] = useState(false);
   const [managing, setManaging] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [scheduling, setScheduling] = useState(false);
+
+  // Split held (date ≤ today) from upcoming: a scheduled future meeting has no
+  // attendance rows yet, so counting it would default everyone to 'absent' and
+  // tank the %. Only held meetings feed the grid, %, and averages; upcoming ones
+  // are shown read-only below so exec can see the schedule they laid down.
+  const today = todayISO();
+  const isHeld = (mt: MeetingRow) => mt.date.slice(0, 10) <= today;
+  const held = meetings.filter(isHeld);
+  const upcoming = meetings.filter((mt) => !isHeld(mt)).sort((a, b) => a.date.localeCompare(b.date));
 
   const statesFor = (membershipId: string): AttendanceState[] =>
-    meetings.map((mt) => att.get(membershipId)?.get(mt.id) ?? 'absent');
+    held.map((mt) => att.get(membershipId)?.get(mt.id) ?? 'absent');
 
   const active = members.filter((m) => m.status !== 'inactive');
   // Average only over members with graded meetings — mirrors SQL avg(), which
   // ignores the NULL attendance_pct of an abroad/excused-all-term brother.
   const graded = active.map((m) => pctFrom(statesFor(m.membershipId))).filter((p): p is number => p !== null);
   const avgAtt = graded.length ? Math.round(graded.reduce((a, b) => a + b, 0) / graded.length) : 0;
-  const range = meetings.length
-    ? `${fmtDate(meetings[0].date)} – ${fmtDate(meetings[meetings.length - 1].date)}`
+  const range = held.length
+    ? `${fmtDate(held[0].date)} – ${fmtDate(held[held.length - 1].date)}`
     : '—';
 
   const cards = [
-    { val: `${avgAtt}%`, top: 'var(--info-500)', label: 'Avg attendance', sub: `${meetings.length} meetings · ${range}` },
+    { val: `${avgAtt}%`, top: 'var(--info-500)', label: 'Avg attendance', sub: `${held.length} meetings · ${range}` },
     { val: String(active.length), top: 'var(--hunter-500)', label: 'Active brothers', sub: `of ${members.length} total` },
     { val: String(statuses.size), top: '#7c5cbf', label: 'Season statuses', sub: 'abroad / recurring excuse' },
   ];
@@ -189,6 +201,32 @@ function ExecAttendance({ members, meetings: propMeetings, attendance, memberTer
     setStatuses((prev) => { const next = new Map(prev); next.delete(membershipId); return next; });
   };
 
+  // Schedule a recurring series. Only dates without an existing meeting are
+  // created — computed server-side when live (authoritative), mirrored here for
+  // the optimistic mock insert. Returns how many were actually added.
+  const onSchedule = async (title: string, dates: string[]): Promise<number> => {
+    const have = new Set(meetings.map((m) => m.date.slice(0, 10)));
+    const fresh = [...new Set(dates)].filter((d) => !have.has(d)).sort();
+    if (live) {
+      let created: { id: string; title: string; date: string }[];
+      try { created = await scheduleMeetings({ title, dates }); }
+      catch (e: any) { alert(e?.message ?? 'Could not schedule meetings.'); return 0; }
+      setMeetings((prev) => {
+        const byId = new Map(prev.map((m) => [m.id, m]));
+        for (const r of created) byId.set(r.id, { id: r.id, title: r.title, date: r.date });
+        return [...byId.values()].sort((a, b) => a.date.localeCompare(b.date));
+      });
+      router.refresh();
+      return created.length;
+    }
+    if (!fresh.length) return 0;
+    setMeetings((prev) => [
+      ...prev,
+      ...fresh.map((d, i) => ({ id: `local-sched-${Date.now()}-${i}`, title: title.trim() || 'Chapter meeting', date: d })),
+    ].sort((a, b) => a.date.localeCompare(b.date)));
+    return fresh.length;
+  };
+
   return (
     <>
       <StatCards cards={cards} />
@@ -198,6 +236,7 @@ function ExecAttendance({ members, meetings: propMeetings, attendance, memberTer
           <h3 className="pkp-h3">Meeting attendance</h3>
           <div className="pkp-files-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="pkp-btn-ghost" style={{ height: 34, padding: '0 13px', fontSize: 13 }} onClick={() => setManaging(true)}>Season statuses</button>
+            <button className="pkp-btn-ghost" style={{ height: 34, padding: '0 13px', fontSize: 13 }} onClick={() => setScheduling(true)}>Schedule meetings</button>
             <button className="pkp-btn-ghost" style={{ height: 34, padding: '0 13px', fontSize: 13 }} onClick={() => setChecking(true)}>Check-in</button>
             <button className="pkp-btn-primary" style={{ height: 34, padding: '0 14px', fontSize: 13 }} onClick={() => setTaking(true)}>Take attendance</button>
           </div>
@@ -211,7 +250,7 @@ function ExecAttendance({ members, meetings: propMeetings, attendance, memberTer
             return (
               <div key={m.membershipId} className="pkp-att-row" style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
                 <div className="pkp-att-name" style={{ display: 'flex', alignItems: 'center', gap: 10, width: 205, flexShrink: 0, minWidth: 0 }}>
-                  <Avatar name={m.fullName} size={30} />
+                  <MemberAvatar name={m.fullName} src={m.avatarUrl} size={30} />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.fullName}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -229,6 +268,27 @@ function ExecAttendance({ members, meetings: propMeetings, attendance, memberTer
           })}
         </div>
       </div>
+
+      {upcoming.length > 0 && (
+        <div className="pkp-card" style={{ padding: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <h3 className="pkp-h3" style={{ margin: 0 }}>Upcoming meetings</h3>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-500)', background: 'var(--cream-200)', borderRadius: 999, padding: '1px 8px' }}>{upcoming.length}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {upcoming.map((mt, i) => (
+              <div key={mt.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
+                <span className="pkp-mono" style={{ width: 92, flexShrink: 0, fontSize: 12.5, color: 'var(--ink-500)' }}>{fmtDate(mt.date)}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: 'var(--ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{mt.title}</span>
+                {mt.checkinOpen && <Badge tone="success">Check-in open</Badge>}
+              </div>
+            ))}
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--ink-400)', marginTop: 12 }}>
+            Scheduled meetings don’t affect attendance % until they’re held. Open check-in or take attendance from the buttons above when each one happens.
+          </p>
+        </div>
+      )}
 
       {taking && (
         <TakeAttendanceModal
@@ -250,7 +310,75 @@ function ExecAttendance({ members, meetings: propMeetings, attendance, memberTer
           onNewMeeting={(id, title, date) => setMeetings((prev) => prev.some((m) => m.id === id) ? prev : [...prev, { id, title, date, checkinOpen: true }].sort((a, b) => a.date.localeCompare(b.date)))}
         />
       )}
+      {scheduling && (
+        <ScheduleMeetingsModal
+          existingDates={new Set(meetings.map((m) => m.date.slice(0, 10)))}
+          onClose={() => setScheduling(false)} onSchedule={onSchedule}
+        />
+      )}
     </>
+  );
+}
+
+/* ─────────────────────────── Schedule-meetings modal ─────────────────────────── */
+
+function ScheduleMeetingsModal({ existingDates, onClose, onSchedule }: {
+  existingDates: Set<string>;
+  onClose: () => void;
+  onSchedule: (title: string, dates: string[]) => Promise<number>;
+}) {
+  const [title, setTitle] = useState('Chapter meeting');
+  const [start, setStart] = useState(todayISO());
+  const [everyNWeeks, setEveryNWeeks] = useState(1);
+  const [count, setCount] = useState(10);
+  const [saving, setSaving] = useState(false);
+
+  // Live preview of the generated series; dates that already have a meeting are
+  // flagged so exec sees they'll be skipped (the server skips them too).
+  const dates = weeklyMeetingDates(start, Math.max(1, Math.min(30, count)), everyNWeeks);
+  const fresh = dates.filter((d) => !existingDates.has(d));
+  const skip = dates.length - fresh.length;
+
+  const submit = async () => {
+    setSaving(true);
+    const added = await onSchedule(title, dates);
+    setSaving(false);
+    onClose();
+    if (added === 0) alert('No new meetings were added — those dates already have meetings.');
+  };
+
+  return (
+    <Modal
+      title="Schedule meetings" sub="Lay down a recurring chapter-meeting series. Dates that already exist are skipped."
+      onClose={onClose} width={480}
+      footer={<ModalActions onCancel={onClose} onSave={submit} saveLabel={saving ? 'Scheduling…' : `Schedule ${fresh.length} meeting${fresh.length === 1 ? '' : 's'}`} canSave={!saving && fresh.length > 0} />}
+    >
+      <Field label="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ flex: 1 }}><Field label="First meeting" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
+        <div style={{ width: 150 }}>
+          <Select label="Repeats" value={String(everyNWeeks)} onChange={(e) => setEveryNWeeks(Number(e.target.value))}
+            options={[{ value: '1', label: 'Weekly' }, { value: '2', label: 'Every 2 weeks' }]} />
+        </div>
+      </div>
+      <Field label="Number of meetings" type="number" value={String(count)}
+        onChange={(e) => setCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))} />
+
+      <div style={{ marginTop: 6, fontSize: 12, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--ink-500)' }}>
+        Preview · {fresh.length} new{skip > 0 ? ` · ${skip} skipped` : ''}
+      </div>
+      <div style={{ marginTop: 8, maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', border: '1px solid var(--cream-200)', borderRadius: 10 }}>
+        {dates.map((d, i) => {
+          const exists = existingDates.has(d);
+          return (
+            <div key={d} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '7px 11px', borderTop: i ? '1px solid var(--cream-100)' : 'none', opacity: exists ? 0.55 : 1 }}>
+              <span className="pkp-mono" style={{ fontSize: 13, color: 'var(--ink-800)' }}>{fmtDate(d)}</span>
+              {exists && <span style={{ fontSize: 11.5, color: 'var(--ink-400)' }}>already scheduled — will skip</span>}
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }
 
@@ -525,8 +653,15 @@ function LiveCheckinModal({ meetings, live, onClose, onNewMeeting }: {
 /* ─────────────────────────── Member ─────────────────────────── */
 
 function MemberAttendance({ me, meetings, states, status, live }: { me: MemberRow; meetings: MeetingRow[]; states: AttendanceState[]; status: MemberTermStatus | null; live: boolean }) {
-  const pct = pctFrom(states);
-  const counts = ATT_ORDER.map((s) => [s, states.filter((x) => x === s).length] as const).filter(([, n]) => n > 0);
+  // Only held meetings (date ≤ today) count — a scheduled future meeting has no
+  // record yet and would otherwise read as an absence. states[] is index-aligned
+  // to meetings[], so filter them together. Mirrors the exec grid's held split.
+  const today = todayISO();
+  const heldPairs = meetings.map((m, i) => ({ m, s: states[i] })).filter((p) => p.m.date.slice(0, 10) <= today);
+  const heldMeetings = heldPairs.map((p) => p.m);
+  const heldStates = heldPairs.map((p) => p.s);
+  const pct = pctFrom(heldStates);
+  const counts = ATT_ORDER.map((s) => [s, heldStates.filter((x) => x === s).length] as const).filter(([, n]) => n > 0);
   const openMeeting = meetings.find((m) => m.checkinOpen);
 
   return (
@@ -538,7 +673,7 @@ function MemberAttendance({ me, meetings, states, status, live }: { me: MemberRo
             <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--ink-500)' }}>Your attendance</div>
             <div className="pkp-mono" style={{ fontSize: 44, fontWeight: 600, letterSpacing: '-.02em', lineHeight: 1.05, marginTop: 6, color: pct !== null && pct < 80 ? 'var(--pkp-primary)' : 'var(--ink-900)' }}>{pct === null ? '—' : `${pct}%`}</div>
             <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 6 }}>
-              {counts.map(([s, n]) => `${n} ${ATT_LABEL[s as AttendanceState].toLowerCase()}`).join(' · ') || 'No meetings yet'} · {meetings.length} meetings
+              {counts.map(([s, n]) => `${n} ${ATT_LABEL[s as AttendanceState].toLowerCase()}`).join(' · ') || 'No meetings yet'} · {heldMeetings.length} meetings
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
@@ -551,8 +686,8 @@ function MemberAttendance({ me, meetings, states, status, live }: { me: MemberRo
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 18 }}>
-          {states.map((s, k) => (
-            <span key={k} title={`${fmtDate(meetings[k]?.date ?? '')} · ${ATT_LABEL[s]}`}
+          {heldStates.map((s, k) => (
+            <span key={k} title={`${fmtDate(heldMeetings[k]?.date ?? '')} · ${ATT_LABEL[s]}`}
               style={{ width: 22, height: 22, borderRadius: 6, flexShrink: 0, background: ATT_COLOR[s] }} />
           ))}
         </div>

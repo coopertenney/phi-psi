@@ -1,7 +1,8 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useMemo, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { resetMyDemoDues } from '@/app/finances/actions';
 import type { MemberRow, ChapterStats } from '@/lib/types';
 import type { ChapterSettings } from '@/lib/data';
 import type { RecentPayment } from '@/lib/data/payments';
@@ -15,6 +16,7 @@ import { getBrowserSupabase } from '@/lib/supabase/browser';
 import { CHAPTER_ID } from '@/lib/chapter';
 import { useApp } from './Providers';
 import { Avatar, Badge, Chips, StatCards, AddButton, MiniStat, Drawer } from './ui';
+import { MemberAvatar } from './MemberAvatar';
 import { icons } from './icons';
 import { Switch } from './AccessScreen';
 import { Modal, ModalActions, Field, Select, FieldRow, downloadCsv } from './form';
@@ -294,7 +296,7 @@ function ExecFinances({ members, stats, settings, recentPayments, live }: { memb
           return (
             <div key={m.membershipId} className="pkp-row" onClick={() => setSelected(m)}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                <Avatar name={m.fullName} size={36} />
+                <MemberAvatar name={m.fullName} src={m.avatarUrl} size={36} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</div>
                   <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>{m.roleLabel}</div>
@@ -403,7 +405,7 @@ function FinanceDrawer({ member: m, extra, live, onAddFine, onClose }: {
     <Drawer
       onClose={onClose}
       header={<>
-        <Avatar name={m.fullName} size={58} fontSize={20} />
+        <MemberAvatar name={m.fullName} src={m.avatarUrl} size={58} fontSize={20} />
         <div style={{ flex: 1 }}>
           <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: 21, fontWeight: 600, color: 'var(--ink-900)' }}>{m.fullName}</h2>
           <div style={{ fontSize: 13.5, color: 'var(--ink-500)', marginTop: 3 }}>{m.roleLabel} · {termLabel}</div>
@@ -531,6 +533,43 @@ function MemberFinances({ member: m, settings, live }: { member: MemberRow; sett
           </div>
         )}
       </div>
+
+      {/* Demo affordance: clears this member's own payment so the pay flow can be
+          re-demoed. Live mode only (mock has no persisted payment to undo) and
+          gated behind NEXT_PUBLIC_DEMO_MODE so it never ships to a real chapter. */}
+      {live && process.env.NEXT_PUBLIC_DEMO_MODE === '1' && <ResetDemoDuesButton settled={settled} />}
+    </div>
+  );
+}
+
+// Undo my own dues payment (see app/finances/actions.ts) and refresh so the
+// balance-due card + Pay button come back. Scoped server-side to the signed-in
+// member — the client sends no id.
+function ResetDemoDuesButton({ settled }: { settled: boolean }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const onClick = () => {
+    setError(null);
+    startTransition(async () => {
+      const res = await resetMyDemoDues();
+      if (res.ok) router.refresh();
+      else setError(res.error);
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginTop: 2 }}>
+      <button
+        className="pkp-btn-ghost"
+        style={{ height: 34, padding: '0 14px', fontSize: 12.5, color: 'var(--ink-500)', opacity: pending ? 0.6 : 1 }}
+        disabled={pending}
+        onClick={onClick}
+      >
+        {pending ? 'Resetting…' : `↺ Reset demo dues${settled ? '' : ' (clear payment)'}`}
+      </button>
+      {error && <div style={{ fontSize: 12, color: 'var(--pkp-primary)' }}>{error}</div>}
     </div>
   );
 }

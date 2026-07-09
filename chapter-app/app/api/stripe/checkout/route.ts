@@ -72,7 +72,11 @@ export async function POST(req: Request) {
     // No card data ever touches our DB — only this reference id + a status,
     // written by the webhook once Stripe confirms the charge (schema.sql).
     metadata: { membership_id: membership.id, chapter_id: CHAPTER_ID, kind },
-    success_url: `${origin}/finances?paid=1`,
+    // session_id lets the return page verify the payment with Stripe and record
+    // it synchronously (see confirmCheckoutOnReturn) — so the balance updates on
+    // redirect without waiting for the webhook (which can't reach localhost).
+    // Stripe substitutes the literal {CHECKOUT_SESSION_ID} template.
+    success_url: `${origin}/finances?paid=1&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/finances?canceled=1`,
   });
 

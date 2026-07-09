@@ -2,7 +2,7 @@
 // and live Supabase based on whether env vars are set — components never know.
 import type {
   MemberRow, ChapterStats, EventRow, MeetingRow, AttendanceRecord, AttendanceState, AnnouncementRow, PnmRow, PnmNote,
-  PointItem, PointEntry, DriveItem, RsvpState, MemberTermStatus,
+  PointItem, PointEntry, DriveItem, MemberTermStatus,
 } from '../types';
 import { cache } from 'react';
 import { isSupabaseConfigured, getServerSupabase } from '../supabase/server';
@@ -22,17 +22,25 @@ const roleLabel = (position: string | null, status: string) =>
 const accessRoleLabel = (role: string | null): string =>
   role === 'admin' ? 'Admin' : role === 'exec' ? 'Officer' : 'Brother';
 
-// Deduped per request: the layout and the page both need the roster, so without
-// this each navigation ran the three roster queries twice.
-export const getMembers = cache(async (): Promise<MemberRow[]> => {
-  if (!isSupabaseConfigured) return mockMembers;
+// Shared roster fetch. Alumni are membership rows with status 'inactive'; they
+// exist ONLY so the lineage tree can render their big–little history. They are
+// EXCLUDED from every user-facing surface (roster, dashboard, search, points,
+// finances) — `includeAlumni` is true only for the Lineage tab (getLineageRoster).
+// Deduped per request per arg: the layout and pages share getMembers() without
+// re-running the three roster queries; lineage's unfiltered fetch is cached apart.
+const fetchRoster = cache(async (includeAlumni: boolean): Promise<MemberRow[]> => {
+  if (!isSupabaseConfigured) {
+    return includeAlumni ? mockMembers : mockMembers.filter((m) => m.status !== 'inactive');
+  }
 
   const sb = getServerSupabase();
   // Roster (member-readable). Finance columns come from member_finances, which
   // RLS gates to self/exec — so a member only gets balances they're allowed to.
+  let standingsQuery = sb.from('member_standings').select('*').eq('chapter_id', CHAPTER_ID);
+  if (!includeAlumni) standingsQuery = standingsQuery.neq('status', 'inactive');
   const [{ data: standings, error: e1 }, { data: finances, error: e2 }, { data: profiles, error: e3 }] =
     await Promise.all([
-      sb.from('member_standings').select('*').eq('chapter_id', CHAPTER_ID),
+      standingsQuery,
       sb.from('member_finances').select('*').eq('chapter_id', CHAPTER_ID),
       sb.from('memberships').select('id, position, profiles(email)').eq('chapter_id', CHAPTER_ID),
     ]);
@@ -68,6 +76,13 @@ export const getMembers = cache(async (): Promise<MemberRow[]> => {
     };
   });
 });
+
+// The active/new roster — every user-facing surface uses this. Alumni excluded.
+export const getMembers = (): Promise<MemberRow[]> => fetchRoster(false);
+
+// Lineage-only roster: includes alumni (status 'inactive') so the full big–little
+// history renders. NEVER use this for member lists, dropdowns, stats, or search.
+export const getLineageRoster = (): Promise<MemberRow[]> => fetchRoster(true);
 
 // The real signed-in member's display identity for the topbar. Null in mock
 // mode (no auth) → the UI falls back to the demo MOCK_USER. `accessRole` is the
@@ -115,34 +130,49 @@ export async function getStats(): Promise<ChapterStats> {
 // Officer's on/off switch for the Stripe "Pay" buttons (lib/stripe.ts) — off
 // by default until the FO's Stripe account is linked; see stripe-dues.sql.
 // Mock mode always reports enabled so the demo flow is visible end to end.
-export interface ChapterSettings { duesPaymentsEnabled: boolean }
+export interface ChapterSettings {
+  duesPaymentsEnabled: boolean;
+  // Points-engine config (chapters.points_*). The client engine clamps totals to
+  // [floor, ceiling]; resetEachTerm scopes totals to the current term.
+  pointsFloor: number;
+  pointsCeiling: number | null;
+  pointsResetEachTerm: boolean;
+  currentTermId: string | null;   // for reset scoping on the client
+}
 
 export async function getChapterSettings(): Promise<ChapterSettings> {
-  if (!isSupabaseConfigured) return { duesPaymentsEnabled: true };
+  if (!isSupabaseConfigured) {
+    return { duesPaymentsEnabled: true, pointsFloor: -5, pointsCeiling: null, pointsResetEachTerm: false, currentTermId: null };
+  }
   const sb = getServerSupabase();
-  const { data, error } = await sb.from('chapters').select('dues_payments_enabled').eq('id', CHAPTER_ID).maybeSingle();
-  if (error) throw error;
-  return { duesPaymentsEnabled: data?.dues_payments_enabled ?? false };
+  const [cfg, { data: term }] = await Promise.all([
+    sb.from('chapters').select('dues_payments_enabled, points_floor, points_ceiling, points_reset_each_term').eq('id', CHAPTER_ID).maybeSingle(),
+    sb.from('terms').select('id').eq('chapter_id', CHAPTER_ID).eq('is_current', true).maybeSingle(),
+  ]);
+  // Degrade gracefully if the points-rules migration hasn't run yet (this getter
+  // also powers the Finances dues toggle, so a 500 here would take down Finances
+  // too): fall back to the base column and default the scoring config.
+  let data = cfg.data as any;
+  if (cfg.error) {
+    const base = await sb.from('chapters').select('dues_payments_enabled').eq('id', CHAPTER_ID).maybeSingle();
+    if (base.error) throw base.error;
+    data = base.data;
+  }
+  return {
+    duesPaymentsEnabled: data?.dues_payments_enabled ?? false,
+    pointsFloor: data?.points_floor ?? -5,
+    pointsCeiling: data?.points_ceiling ?? null,
+    pointsResetEachTerm: data?.points_reset_each_term ?? false,
+    currentTermId: term?.id ?? null,
+  };
 }
 
 /* ─────────────────────────── Events & attendance ───────────────────────────
-   Events + RSVPs are LIVE (see app-foundation/events-live.sql). Meetings and
-   attendance are still mock — that's the next vertical. */
+   Events are LIVE (see app-foundation/events-live.sql). RSVPs are handled in
+   Partiful (each social carries an optional invite link) — the app stores no
+   per-member RSVP. Meetings and attendance are still mock — the next vertical. */
 
-export interface EventRsvp { eventId: string; membershipId: string; status: RsvpState }
-
-// DB rsvp_status ↔ app RsvpState. 'no_response' rows are ignored (treated unset).
-const RSVP_IN: Record<string, RsvpState | null> = {
-  going: 'going', maybe: 'maybe', declined: 'no', no_response: null,
-};
-
-function mapEvent(row: any, rsvps: any[]): EventRow {
-  const counts = { going: 0, maybe: 0, no: 0 };
-  for (const r of rsvps) {
-    if (r.event_id !== row.id) continue;
-    const s = RSVP_IN[r.status];
-    if (s) counts[s]++;
-  }
+function mapEvent(row: any): EventRow {
   return {
     id: row.id,
     title: row.name,
@@ -153,35 +183,19 @@ function mapEvent(row: any, rsvps: any[]): EventRow {
     description: row.description ?? '',
     mandatory: row.required,
     pointsValue: row.points ?? 0,
-    rsvp: counts,
+    partifulUrl: row.partiful_url ?? null,
   };
 }
 
 export async function getEvents(): Promise<EventRow[]> {
   if (!isSupabaseConfigured) return mockEvents;
   const sb = getServerSupabase();
-  const [{ data: evs, error: e1 }, { data: rs, error: e2 }] = await Promise.all([
-    sb.from('events').select('*').eq('chapter_id', CHAPTER_ID).order('starts_at'),
-    sb.from('rsvps').select('event_id, membership_id, status'),
-  ]);
-  if (e1 || e2) throw (e1 || e2);
-  const rsvps = rs ?? [];
-  return (evs ?? []).map((row: any) => mapEvent(row, rsvps));
+  const { data, error } = await sb.from('events').select('*').eq('chapter_id', CHAPTER_ID).order('starts_at');
+  if (error) throw error;
+  return (data ?? []).map(mapEvent);
 }
 
-// Per-member RSVP records (for the exec drawer's guest list + each member's own
-// choice). Empty in mock mode — the screen derives demo RSVPs there instead.
-export async function getEventRsvps(): Promise<EventRsvp[]> {
-  if (!isSupabaseConfigured) return [];
-  const sb = getServerSupabase();
-  const { data } = await sb.from('rsvps').select('event_id, membership_id, status');
-  return (data ?? []).flatMap((r: any) => {
-    const s = RSVP_IN[r.status];
-    return s ? [{ eventId: r.event_id, membershipId: r.membership_id, status: s }] : [];
-  });
-}
-
-// The signed-in member's own membership id (for RSVP writes + "my events").
+// The signed-in member's own membership id (used to resolve "me" in live mode).
 // Null in mock mode (identity is the persona toggle there).
 export async function getMyMembershipId(): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
@@ -395,12 +409,25 @@ export async function getMyPnmChoices(): Promise<{ ratings: Record<string, numbe
 export async function getPointItems(): Promise<PointItem[]> {
   if (!isSupabaseConfigured) return mockPointItems;
   const sb = getServerSupabase();
-  const { data, error } = await sb
-    .from('point_items').select('id, label, points, kind, discretionary')
+  const full = await sb
+    .from('point_items')
+    .select('id, label, points, kind, discretionary, sort_order, archived, max_per_term, auto_trigger, self_loggable, auto_approve')
     .eq('chapter_id', CHAPTER_ID).order('sort_order');
-  if (error) throw error;
-  return (data ?? []).map((r: any): PointItem => ({
+  if (!full.error) {
+    return (full.data ?? []).map((r: any): PointItem => ({
+      id: r.id, label: r.label, points: r.points, kind: r.kind, discretionary: r.discretionary,
+      sortOrder: r.sort_order ?? 0, archived: r.archived ?? false,
+      maxPerTerm: r.max_per_term ?? null, autoTrigger: r.auto_trigger ?? null,
+      selfLoggable: r.self_loggable ?? null, autoApprove: r.auto_approve ?? false,
+    }));
+  }
+  // Degrade gracefully if the catalog-CRUD / rules migrations haven't been run
+  // yet (code deployed before SQL): read the original columns, default the rest.
+  const base = await sb.from('point_items').select('id, label, points, kind, discretionary').eq('chapter_id', CHAPTER_ID);
+  if (base.error) throw base.error;
+  return (base.data ?? []).map((r: any, i: number): PointItem => ({
     id: r.id, label: r.label, points: r.points, kind: r.kind, discretionary: r.discretionary,
+    sortOrder: i + 1, archived: false, maxPerTerm: null, autoTrigger: null, selfLoggable: null, autoApprove: false,
   }));
 }
 
@@ -409,7 +436,7 @@ export async function getPointEntries(): Promise<PointEntry[]> {
   const sb = getServerSupabase();
   const { data, error } = await sb
     .from('points_entries')
-    .select('id, membership_id, item_id, points, approved_by, status, created_at, point_items(label), memberships!inner(chapter_id)')
+    .select('id, membership_id, item_id, points, approved_by, status, term_id, created_at, point_items(label), memberships!inner(chapter_id)')
     .eq('memberships.chapter_id', CHAPTER_ID)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -422,6 +449,7 @@ export async function getPointEntries(): Promise<PointEntry[]> {
     date: r.created_at,
     approvedBy: r.approved_by ?? '',
     status: r.status ?? 'approved',
+    termId: r.term_id ?? null,
   }));
 }
 

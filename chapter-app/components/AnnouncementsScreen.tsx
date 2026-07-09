@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AnnouncementRow, AnnouncementCategory, AnnouncementAudience } from '@/lib/types';
 import { relativeDay, type BadgeTone } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { MOCK_USER } from '@/lib/session';
-import { postAnnouncement, markAnnouncementRead } from '@/app/announcements/actions';
+import { postAnnouncement, deleteAnnouncement, markAnnouncementsRead } from '@/app/announcements/actions';
 import { useApp } from './Providers';
 import { Avatar, Badge } from './ui';
 
@@ -28,13 +28,16 @@ const sortFeed = (a: AnnouncementRow, b: AnnouncementRow): number =>
 
 export function AnnouncementsScreen({ announcements, myReadIds = [], live = false }: { announcements: AnnouncementRow[]; myReadIds?: string[]; live?: boolean }) {
   const { role } = useApp();
+  const router = useRouter();
+  const canManage = role === 'exec';
   const [posts, setPosts] = useState<AnnouncementRow[]>(announcements);
   useEffect(() => setPosts(announcements), [announcements]); // follow server refreshes
 
-  // Which announcements this member has read. Seeded from the server, updated
-  // optimistically on "Mark as read".
-  const [readIds, setReadIds] = useState<Set<string>>(() => new Set(myReadIds));
-  useEffect(() => setReadIds(new Set(myReadIds)), [myReadIds]);
+  // Which announcements this member had read as of the server fetch. Drives the
+  // "new since your last visit" highlight for THIS session — we don't fold in the
+  // auto-marks below, so freshly-seen posts stay flagged until you leave and
+  // return (standard feed behaviour), at which point the server reports them read.
+  const readIds = useMemo(() => new Set(myReadIds), [myReadIds]);
 
   const visible = useMemo(
     () => posts.filter((p) => (role === 'exec' ? true : p.audience === 'all')).sort(sortFeed),
@@ -42,15 +45,34 @@ export function AnnouncementsScreen({ announcements, myReadIds = [], live = fals
   );
   const unreadCount = useMemo(() => visible.filter((a) => !readIds.has(a.id)).length, [visible, readIds]);
 
+  // Auto-mark on visit: the moment the feed is on screen, persist a "read" row
+  // for every visible announcement the member hasn't read yet — no manual click.
+  // A ref tracks what we've already sent so re-renders don't re-POST. Live only;
+  // mock mode has no read store.
+  const sentRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!live) return;
+    const toMark = visible.map((a) => a.id).filter((id) => !readIds.has(id) && !sentRef.current.has(id));
+    if (toMark.length === 0) return;
+    toMark.forEach((id) => sentRef.current.add(id));
+    markAnnouncementsRead(toMark).catch(() => {
+      toMark.forEach((id) => sentRef.current.delete(id)); // let a later render retry
+    });
+  }, [visible, readIds, live]);
+
   const onPost = (a: AnnouncementRow) => setPosts((prev) => [a, ...prev]);
 
-  const markRead = async (id: string) => {
-    setReadIds((prev) => new Set(prev).add(id)); // optimistic
+  const onDelete = async (id: string) => {
+    if (typeof window !== 'undefined' && !window.confirm('Delete this announcement for the whole chapter?')) return;
+    const prev = posts;
+    setPosts((cur) => cur.filter((a) => a.id !== id)); // optimistic
     if (!live) return;
     try {
-      await markAnnouncementRead(id);
-    } catch {
-      setReadIds((prev) => { const n = new Set(prev); n.delete(id); return n; }); // revert on failure
+      await deleteAnnouncement(id);
+      router.refresh();
+    } catch (err: any) {
+      setPosts(prev); // revert on failure
+      alert(err?.message ?? 'Could not delete the announcement.');
     }
   };
 
@@ -61,7 +83,7 @@ export function AnnouncementsScreen({ announcements, myReadIds = [], live = fals
       {unreadCount === 0 && <CaughtUp />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {visible.map((a) => (
-          <Card key={a.id} a={a} read={readIds.has(a.id)} onMarkRead={() => markRead(a.id)} />
+          <Card key={a.id} a={a} read={readIds.has(a.id)} canManage={canManage} onDelete={() => onDelete(a.id)} />
         ))}
       </div>
     </div>
@@ -79,7 +101,7 @@ function CaughtUp() {
   );
 }
 
-function Card({ a, read, onMarkRead }: { a: AnnouncementRow; read: boolean; onMarkRead: () => void }) {
+function Card({ a, read, canManage, onDelete }: { a: AnnouncementRow; read: boolean; canManage: boolean; onDelete: () => void }) {
   return (
     <div className="pkp-card" style={{ padding: 18, borderLeft: a.pinned ? '3px solid var(--pkp-primary)' : undefined, opacity: read ? 0.62 : 1, transition: 'opacity .15s' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9, flexWrap: 'wrap' }}>
@@ -100,11 +122,9 @@ function Card({ a, read, onMarkRead }: { a: AnnouncementRow; read: boolean; onMa
           <span style={{ fontWeight: 600, color: 'var(--ink-800)' }}>{a.author}</span>
           <span style={{ color: 'var(--ink-500)' }}> · {a.authorRole}</span>
         </div>
-        {read ? (
-          <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--ink-400)' }}>Read</span>
-        ) : (
-          <button className="pkp-btn-ghost" style={{ marginLeft: 'auto', height: 30, padding: '0 12px', fontSize: 12 }} onClick={onMarkRead}>
-            Mark as read
+        {canManage && (
+          <button className="pkp-btn-ghost" style={{ marginLeft: 'auto', height: 30, padding: '0 12px', fontSize: 12, color: 'var(--danger-600)' }} onClick={onDelete}>
+            Delete
           </button>
         )}
       </div>

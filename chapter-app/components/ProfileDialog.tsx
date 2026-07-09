@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
 import type { MemberRow } from '@/lib/types';
 import { ProfileScreen } from './ProfileScreen';
+import { useEscapeKey } from './useEscapeKey';
 
 // The signed-in member's profile, shown as a centered popup instead of a nav tab.
 // Wraps the full ProfileScreen in a scrim + scrollable panel. Opened from the
@@ -13,11 +13,7 @@ export function ProfileDialog({ members, myMembershipId, live = false, onClose }
   live?: boolean;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   return (
     <div

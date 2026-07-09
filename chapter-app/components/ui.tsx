@@ -1,6 +1,9 @@
+'use client';
+
 import type { CSSProperties, ReactNode } from 'react';
 import { initials, tint, type BadgeTone } from '@/lib/format';
 import { icons } from './icons';
+import { useEscapeKey } from './useEscapeKey';
 
 export function Avatar({ name, size = 36, fontSize }: { name: string; size?: number; fontSize?: number }) {
   const t = tint(name);
@@ -22,6 +25,7 @@ export function Badge({ tone, children }: { tone: BadgeTone; children: React.Rea
 export function Drawer({ onClose, header, footer, headerGap = 16, bodyGap = 18, children }: {
   onClose: () => void; header: ReactNode; footer?: ReactNode; headerGap?: number; bodyGap?: number; children: ReactNode;
 }) {
+  useEscapeKey(onClose);
   return (
     <>
       <div className="pkp-scrim" onClick={onClose} />

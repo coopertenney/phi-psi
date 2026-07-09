@@ -87,13 +87,15 @@ left join (
 create or replace view chapter_stats as
 select
   m.chapter_id,
+  -- Alumni (status 'inactive') are lineage-only — every count/sum filters them
+  -- out so no user-facing stat card includes them (see roster-add-alumni.sql).
   count(*) filter (where m.status <> 'inactive')               as active_members,
-  count(*)                                                     as total_members,
-  count(*) filter (where f.dues_state = 'paid')                as paid_count,
-  count(*) filter (where f.dues_state = 'partial')             as partial_count,
-  count(*) filter (where f.dues_state = 'due')                 as due_count,
-  sum(f.paid_cents)                                            as collected_cents,
-  sum(f.charged_cents)                                         as target_cents,
+  count(*) filter (where m.status <> 'inactive')               as total_members,
+  count(*) filter (where m.status <> 'inactive' and f.dues_state = 'paid')    as paid_count,
+  count(*) filter (where m.status <> 'inactive' and f.dues_state = 'partial') as partial_count,
+  count(*) filter (where m.status <> 'inactive' and f.dues_state = 'due')     as due_count,
+  sum(f.paid_cents)   filter (where m.status <> 'inactive')    as collected_cents,
+  sum(f.charged_cents) filter (where m.status <> 'inactive')   as target_cents,
   round(avg(att.attendance_pct) filter (where m.status <> 'inactive')) as avg_attendance_pct
 from memberships m
 left join (

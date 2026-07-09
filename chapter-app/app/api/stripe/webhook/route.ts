@@ -10,33 +10,13 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
-import { getAdminSupabase, isAdminSupabaseConfigured } from '@/lib/supabase/admin';
+import { isAdminSupabaseConfigured } from '@/lib/supabase/admin';
+import { recordCheckoutPayment } from '@/lib/stripe-record';
 
 export const runtime = 'nodejs'; // needs the raw body; edge runtime can't give us that here
 
-async function recordPayment(session: Stripe.Checkout.Session, status: 'succeeded' | 'failed') {
-  const membershipId = session.metadata?.membership_id;
-  if (!membershipId) return;
-
-  const sb = getAdminSupabase();
-  const amountCents = session.amount_total ?? 0;
-  const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : session.id;
-
-  // Idempotent: Stripe retries webhooks, so skip if we've already recorded
-  // this payment intent (unique-ish key we control, since payments has no
-  // unique constraint on stripe_payment_intent_id).
-  const { data: existing } = await sb
-    .from('payments').select('id').eq('stripe_payment_intent_id', paymentIntentId).maybeSingle();
-  if (existing) return;
-
-  await sb.from('payments').insert({
-    membership_id: membershipId,
-    amount_cents: amountCents,
-    status,
-    stripe_payment_intent_id: paymentIntentId,
-    paid_at: status === 'succeeded' ? new Date().toISOString() : null,
-  });
-}
+// Idempotent write shared with the success-return verifier (lib/stripe-record).
+const recordPayment = recordCheckoutPayment;
 
 export async function POST(req: Request) {
   if (!isAdminSupabaseConfigured) {

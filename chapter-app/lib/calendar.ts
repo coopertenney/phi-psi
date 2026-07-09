@@ -81,3 +81,21 @@ export function termAcademicYear(t: Term): { startYear: number; label: string } 
 
 // The term the chapter is in today — the baseline the cycle button advances from.
 export const BASE_TERM: Term = { quarter: quarterForDate(NOW), year: NOW.getFullYear() };
+
+/* ─────────────────────────── Recurring meeting series ───────────────────────────
+   Materialize a weekly meeting schedule into concrete dates. We generate real
+   rows (~10–15/term) rather than storing an RRULE, since attendance and check-in
+   are already keyed per meeting id. Pure and deterministic — parses/formats by
+   Y-M-D parts so it never drifts across a timezone (new Date('2026-04-05') would
+   parse as UTC midnight and shift a day in negative offsets). */
+export function weeklyMeetingDates(startISO: string, count: number, everyNWeeks = 1): string[] {
+  const [y, m, d] = startISO.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d || count < 1) return [];
+  const step = Math.max(1, everyNWeeks) * 7;
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const dt = new Date(y, m - 1, d + i * step); // local time; day arithmetic normalizes month/year
+    out.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
+  }
+  return out;
+}

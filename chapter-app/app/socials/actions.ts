@@ -1,7 +1,6 @@
 'use server';
 
 import { getServerSupabase } from '@/lib/supabase/server';
-import { requireMembershipId } from '@/lib/membership';
 import { CHAPTER_ID } from '@/lib/chapter';
 import { sendPushToChapter, isPushConfigured } from '@/lib/push';
 
@@ -12,6 +11,7 @@ export interface EventInput {
   endsAt: string | null;
   location: string;
   description: string;
+  partifulUrl: string | null;
   // Client-formatted "Fri, Apr 17, 9:00 PM" for the creation notification —
   // formatted on the client so it reflects the chapter's timezone, not the
   // server's (Vercel runs UTC).
@@ -25,6 +25,7 @@ const toRow = (i: EventInput) => ({
   ends_at: i.endsAt,
   location: i.location,
   description: i.description,
+  partiful_url: i.partifulUrl,
   // Socials are never mandatory and never carry points or attendance — enforced
   // here so the DB row is authoritative no matter what the client sends.
   required: false,
@@ -57,7 +58,7 @@ export async function createEvent(input: EventInput) {
         CHAPTER_ID,
         {
           title: `New social: ${input.title}`,
-          body: parts.length ? parts.join(' · ') : 'Tap to RSVP on the Socials tab.',
+          body: parts.length ? parts.join(' · ') : 'Tap to see it on the Socials tab.',
           url: '/socials',
           tag: 'social-new',
         },
@@ -81,25 +82,6 @@ export async function deleteEvent(id: string) {
   if (error) throw new Error(error.message);
 }
 
-// Set (or clear) the signed-in member's own RSVP. RLS (rsvps_mine) ensures a
-// member can only write their own row.
-export async function setRsvp(eventId: string, status: 'going' | 'maybe' | 'no' | null) {
-  const sb = getServerSupabase();
-  const membershipId = await requireMembershipId(sb);
-
-  if (status === null) {
-    const { error } = await sb.from('rsvps').delete().eq('event_id', eventId).eq('membership_id', membershipId);
-    if (error) throw new Error(error.message);
-    return;
-  }
-
-  const dbStatus = status === 'no' ? 'declined' : status;
-  const { error } = await sb
-    .from('rsvps')
-    .upsert({ event_id: eventId, membership_id: membershipId, status: dbStatus }, { onConflict: 'event_id,membership_id' });
-  if (error) throw new Error(error.message);
-}
-
-// Note: socials never carry attendance or points — RSVPs are the only per-member
-// signal here. Meeting attendance lives on the Attendance tab, keyed off
-// `meetings`, not events.
+// Note: socials carry no per-member state in the app. RSVPs are handled entirely
+// in Partiful (each social has an optional invite link). Meeting attendance lives
+// on the Attendance tab, keyed off `meetings`, not events.

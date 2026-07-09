@@ -2,14 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { EventRow, EventType, MemberRow, RsvpState } from '@/lib/types';
-import type { EventRsvp } from '@/lib/data';
+import type { EventRow, EventType, MemberRow } from '@/lib/types';
 import { fmtTime, relativeDay, type BadgeTone } from '@/lib/format';
 import { NOW } from '@/lib/engagement';
 import { currentMember } from '@/lib/session';
-import { createEvent, updateEvent, deleteEvent, setRsvp, type EventInput } from '@/app/socials/actions';
+import { createEvent, updateEvent, deleteEvent, type EventInput } from '@/app/socials/actions';
 import { useApp } from './Providers';
-import { Avatar, Badge, AddButton, MiniStat, Drawer } from './ui';
+import { Badge, AddButton, Drawer } from './ui';
 import { icons } from './icons';
 import { Modal, Field, Select, TextArea, FieldRow } from './form';
 
@@ -28,12 +27,6 @@ const TYPE_META: Record<'social' | 'brotherhood', { label: string; tone: BadgeTo
   brotherhood: { label: 'Brotherhood', tone: 'warning' },
 };
 const typeMeta = (t: string) => TYPE_META[t as 'social' | 'brotherhood'] ?? { label: t, tone: 'neutral' as BadgeTone };
-
-const RSVP_META: Record<RsvpState, { tone: BadgeTone; label: string }> = {
-  going: { tone: 'success', label: 'Going' },
-  maybe: { tone: 'warning', label: 'Maybe' },
-  no: { tone: 'neutral', label: 'Not going' },
-};
 
 const DAY = 86_400_000;
 const HRS2 = 2 * 60 * 60 * 1000;
@@ -74,20 +67,23 @@ function byWeek(socials: EventRow[], now: Date): { label: string; items: EventRo
   return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([, g]) => g);
 }
 
-// event id → (membership id → their RSVP)
-type RsvpIndex = Map<string, Map<string, RsvpState>>;
-function buildIndex(rsvps: EventRsvp[]): RsvpIndex {
-  const idx: RsvpIndex = new Map();
-  for (const r of rsvps) {
-    if (!idx.has(r.eventId)) idx.set(r.eventId, new Map());
-    idx.get(r.eventId)!.set(r.membershipId, r.status);
+// Normalize a pasted Partiful link into a safe absolute https URL. Returns null
+// for empty/garbage input so we never render a broken or relative href.
+function partifulHref(raw: string | null): string | null {
+  const v = (raw ?? '').trim();
+  if (!v) return null;
+  const withProto = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(withProto);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null;
+  } catch {
+    return null;
   }
-  return idx;
 }
 
 const toInput = (e: EventRow): EventInput => ({
   title: e.title, type: e.type, startsAt: e.startsAt, endsAt: e.endsAt,
-  location: e.location, description: e.description,
+  location: e.location, description: e.description, partifulUrl: e.partifulUrl,
   // Formatted here (client-side) so the creation notification shows the time in
   // the chapter's timezone rather than the server's UTC.
   whenLabel: new Date(e.startsAt).toLocaleString('en-US', {
@@ -105,19 +101,6 @@ function DateBlock({ iso, muted }: { iso: string; muted?: boolean }) {
     }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: muted ? 'var(--ink-400)' : 'var(--pkp-primary)' }}>{MONTHS[d.getMonth()]}</div>
       <div className="pkp-mono" style={{ fontSize: 20, fontWeight: 600, color: muted ? 'var(--ink-500)' : 'var(--ink-900)' }}>{d.getDate()}</div>
-    </div>
-  );
-}
-
-function RsvpBar({ rsvp }: { rsvp: EventRow['rsvp'] }) {
-  const total = rsvp.going + rsvp.maybe + rsvp.no || 1;
-  const seg = (n: number, color: string) =>
-    n > 0 ? <div style={{ width: `${(n / total) * 100}%`, background: color }} /> : null;
-  return (
-    <div style={{ display: 'flex', height: 8, borderRadius: 999, overflow: 'hidden', background: 'var(--cream-300)' }}>
-      {seg(rsvp.going, 'var(--success-500)')}
-      {seg(rsvp.maybe, 'var(--warning-500)')}
-      {seg(rsvp.no, 'var(--ink-300)')}
     </div>
   );
 }
@@ -232,30 +215,26 @@ function LiveEventCard({ event: e, onCheckIn }: { event: EventRow; onCheckIn: ()
 type Props = {
   events: EventRow[];
   members: MemberRow[];
-  rsvps: EventRsvp[];
   myMembershipId: string | null;
   live: boolean;
 };
 
-export function SocialsScreen({ events, members, rsvps, myMembershipId, live }: Props) {
+export function SocialsScreen({ events, members, myMembershipId, live }: Props) {
   const { role, persona } = useApp();
-  const rsvpIndex = useMemo(() => buildIndex(rsvps), [rsvps]);
   const socials = useMemo(() => events.filter(isSocial), [events]);
 
   if (role === 'member') {
     const me = live ? members.find((m) => m.membershipId === myMembershipId) : currentMember(members, persona);
     return me
-      ? <MemberSocials socials={socials} events={events} me={me} rsvpIndex={rsvpIndex} live={live} />
+      ? <MemberSocials socials={socials} events={events} />
       : <p style={{ color: 'var(--ink-500)' }}>Your member profile isn’t loaded yet.</p>;
   }
-  return <ExecSocials socials={socials} members={members} rsvpIndex={rsvpIndex} live={live} />;
+  return <ExecSocials socials={socials} live={live} />;
 }
 
 /* ─────────────────────────── Exec: agenda + create/edit ─────────────────────────── */
 
-function ExecSocials({ socials, members, rsvpIndex, live }: {
-  socials: EventRow[]; members: MemberRow[]; rsvpIndex: RsvpIndex; live: boolean;
-}) {
+function ExecSocials({ socials, live }: { socials: EventRow[]; live: boolean }) {
   const router = useRouter();
   const [list, setList] = useState<EventRow[]>(socials);
   useEffect(() => setList(socials), [socials]); // follow server refreshes
@@ -324,12 +303,9 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
             {relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)} · {e.location}
           </div>
         </div>
-        <div className="pkp-evt-rsvp" style={{ width: 132, flexShrink: 0 }}>
-          <div style={{ fontSize: 12, color: 'var(--ink-600)', marginBottom: 5, textAlign: 'right' }}>
-            <span style={{ fontWeight: 600, color: 'var(--ink-800)' }}>{e.rsvp.going}</span> going
-          </div>
-          <RsvpBar rsvp={e.rsvp} />
-        </div>
+        {partifulHref(e.partifulUrl) && (
+          <span className="pkp-evt-rsvp" style={{ fontSize: 12, fontWeight: 600, color: 'var(--pkp-primary)', flexShrink: 0 }}>Partiful</span>
+        )}
         <div style={{ display: 'flex', color: 'var(--ink-400)' }}>{icons.chevron}</div>
       </div>
     );
@@ -401,8 +377,6 @@ function ExecSocials({ socials, members, rsvpIndex, live }: {
       {selected && (
         <SocialDrawer
           event={selected}
-          members={members}
-          eventRsvps={rsvpIndex.get(selected.id) ?? new Map()}
           onClose={() => setSelectedId(null)}
           onEdit={() => setForm(selected)}
         />
@@ -435,6 +409,7 @@ function SocialFormModal({ base, busy, onClose, onSave, onDelete }: {
   const [time, setTime] = useState(base ? toTimeInput(base.startsAt) : '21:00');
   const [location, setLocation] = useState(base?.location ?? '');
   const [description, setDescription] = useState(base?.description ?? '');
+  const [partiful, setPartiful] = useState(base?.partifulUrl ?? '');
 
   const canSave = title.trim() !== '' && date !== '' && location.trim() !== '' && !busy;
   const submit = () => {
@@ -445,10 +420,10 @@ function SocialFormModal({ base, busy, onClose, onSave, onDelete }: {
       id: base?.id ?? `evt-local-${Date.now()}`,
       title: title.trim(), type, startsAt, endsAt,
       location: location.trim(), description: description.trim(),
+      partifulUrl: partifulHref(partiful),
       // Socials aren't mandatory and don't carry points — keep any existing
       // values on edit, default to none for new ones.
       mandatory: base?.mandatory ?? false, pointsValue: base?.pointsValue ?? 0,
-      rsvp: base?.rsvp ?? { going: 0, maybe: 0, no: 0 },
     });
   };
 
@@ -474,29 +449,18 @@ function SocialFormModal({ base, busy, onClose, onSave, onDelete }: {
         <Field label="Time" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
       </FieldRow>
       <Field label="Location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Chapter House — Great Room" />
+      <Field label="Partiful link" value={partiful} onChange={(e) => setPartiful(e.target.value)} placeholder="e.g. partiful.com/e/your-event" />
       <TextArea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What's happening?" />
     </Modal>
   );
 }
 
-function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
-  event: EventRow; members: MemberRow[]; eventRsvps: Map<string, RsvpState>; onClose: () => void; onEdit: () => void;
+function SocialDrawer({ event: e, onClose, onEdit }: {
+  event: EventRow; onClose: () => void; onEdit: () => void;
 }) {
   const tm = typeMeta(e.type);
   const past = isPast(e);
-  const roster = useMemo(() => members.filter((m) => m.status !== 'inactive'), [members]);
-  // Guest list = who RSVP'd, going first. (Attendance check-in is deferred — it
-  // moves to the Attendance tab; this drawer is RSVP-only.)
-  const ORDER: Record<string, number> = { going: 0, maybe: 1, no: 2, none: 3 };
-  const guests = useMemo(
-    () => [...roster].sort((a, b) =>
-      ORDER[eventRsvps.get(a.membershipId) ?? 'none'] - ORDER[eventRsvps.get(b.membershipId) ?? 'none']),
-    [roster, eventRsvps],
-  );
-
-  const stat = (val: string, label: string, color: string) => (
-    <MiniStat val={val} label={label} color={color} />
-  );
+  const partiful = partifulHref(e.partifulUrl);
 
   return (
     <Drawer
@@ -517,6 +481,13 @@ function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
     >
           {e.description && <div style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.6 }}>{e.description}</div>}
 
+          {partiful && (
+            <a href={partiful} target="_blank" rel="noopener noreferrer" className="pkp-btn-primary"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, fontSize: 13.5, textDecoration: 'none' }}>
+              Open Partiful invite ↗
+            </a>
+          )}
+
           <div className="pkp-card" style={{ padding: 16 }}>
             <div className="pkp-col-head" style={{ marginBottom: 11 }}>Details</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -527,47 +498,19 @@ function SocialDrawer({ event: e, members, eventRsvps, onClose, onEdit }: {
                 </div>
               ))}
             </div>
-          </div>
-
-          <div className="pkp-card" style={{ padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div className="pkp-col-head">RSVPs</div>
-              <span style={{ fontSize: 12.5, color: 'var(--ink-500)' }}>{roster.length} active brothers</span>
-            </div>
-            <RsvpBar rsvp={e.rsvp} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginTop: 14 }}>
-              {stat(String(e.rsvp.going), 'Going', 'var(--success-600)')}
-              {stat(String(e.rsvp.maybe), 'Maybe', 'var(--warning-600)')}
-              {stat(String(e.rsvp.no), 'Not going', 'var(--ink-700)')}
-            </div>
-          </div>
-
-          <div className="pkp-card" style={{ padding: 16 }}>
-            <div className="pkp-col-head" style={{ marginBottom: 12 }}>Guest list</div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {guests.map((m, i) => {
-                const r = eventRsvps.get(m.membershipId) ?? null;
-                return (
-                  <div key={m.membershipId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
-                    <Avatar name={m.fullName} size={32} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-800)' }}>{m.fullName}</div>
-                    </div>
-                    {r ? <Badge tone={RSVP_META[r].tone}>{RSVP_META[r].label}</Badge> : <Badge tone="neutral">No response</Badge>}
-                  </div>
-                );
-              })}
-            </div>
+            {!partiful && (
+              <div style={{ fontSize: 12.5, color: 'var(--ink-400)', marginTop: 12 }}>
+                No Partiful link yet — add one in Edit so brothers can RSVP.
+              </div>
+            )}
           </div>
     </Drawer>
   );
 }
 
-/* ─────────────────────────── Member: agenda + RSVP ─────────────────────────── */
+/* ─────────────────────────── Member: agenda ─────────────────────────── */
 
-function MemberSocials({ socials, events, me, rsvpIndex, live }: {
-  socials: EventRow[]; events: EventRow[]; me: MemberRow; rsvpIndex: RsvpIndex; live: boolean;
-}) {
+function MemberSocials({ socials, events }: { socials: EventRow[]; events: EventRow[] }) {
   const router = useRouter();
   const sorted = useMemo(
     () => [...socials].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()),
@@ -583,19 +526,6 @@ function MemberSocials({ socials, events, me, rsvpIndex, live }: {
     const now = events.filter(isLiveNow);
     return now.find((e) => e.type === 'meeting') ?? now[0] ?? null;
   }, [events]);
-
-  const seed = useMemo(
-    () => Object.fromEntries(socials.map((e) => [e.id, rsvpIndex.get(e.id)?.get(me.membershipId) ?? null])) as Record<string, RsvpState | null>,
-    [socials, rsvpIndex, me.membershipId],
-  );
-  const [rsvps, setRsvps] = useState<Record<string, RsvpState | null>>(seed);
-  useEffect(() => setRsvps(seed), [seed]);
-
-  const onRsvp = (id: string, s: RsvpState) => {
-    const next = rsvps[id] === s ? null : s;
-    setRsvps((prev) => ({ ...prev, [id]: next })); // optimistic
-    if (live) setRsvp(id, next).then(() => router.refresh()).catch((err: any) => { alert(err?.message ?? 'RSVP failed'); router.refresh(); });
-  };
 
   const [flashId, setFlashId] = useState<string | null>(null);
   // Scroll an agenda card into view and flash it. Used by the topbar search
@@ -624,7 +554,7 @@ function MemberSocials({ socials, events, me, rsvpIndex, live }: {
             <div className="pkp-col-head">{g.label}</div>
             {g.items.map((e) => {
               const tm = typeMeta(e.type);
-              const mine = rsvps[e.id] ?? null;
+              const partiful = partifulHref(e.partifulUrl);
               return (
                 <div key={e.id} id={`evt-${e.id}`} className={`pkp-card${flashId === e.id ? ' pkp-flash' : ''}`} style={{ padding: 16, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                   <DateBlock iso={e.startsAt} />
@@ -638,17 +568,12 @@ function MemberSocials({ socials, events, me, rsvpIndex, live }: {
                       {relativeDay(e.startsAt, NOW)} · {fmtTime(e.startsAt)} · {e.location}
                     </div>
                     {e.description && <p style={{ fontSize: 13, color: 'var(--ink-600)', lineHeight: 1.55, margin: '10px 0 0' }}>{e.description}</p>}
-                    <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                      {(['going', 'maybe', 'no'] as RsvpState[]).map((s) => {
-                        const on = mine === s;
-                        return (
-                          <button key={s} onClick={() => onRsvp(e.id, s)} className={on ? 'pkp-btn-primary' : 'pkp-btn-ghost'}
-                            style={{ flex: 1, height: 38, fontSize: 13, padding: '0 10px' }}>
-                            {RSVP_META[s].label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {partiful && (
+                      <a href={partiful} target="_blank" rel="noopener noreferrer" className="pkp-btn-primary"
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, marginTop: 14, fontSize: 13.5, textDecoration: 'none' }}>
+                        RSVP on Partiful ↗
+                      </a>
+                    )}
                   </div>
                 </div>
               );
@@ -658,22 +583,18 @@ function MemberSocials({ socials, events, me, rsvpIndex, live }: {
       </section>
 
       <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <h3 className="pkp-h3">Your RSVP history</h3>
+        <h3 className="pkp-h3">Past socials</h3>
         <div className="pkp-card" style={{ overflow: 'hidden' }}>
           {past.length === 0 && <div style={{ padding: 20, fontSize: 13.5, color: 'var(--ink-500)' }}>No past socials yet.</div>}
-          {past.map((e, i) => {
-            const r = rsvpIndex.get(e.id)?.get(me.membershipId) ?? null;
-            return (
-              <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 18px', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
-                <DateBlock iso={e.startsAt} muted />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-800)' }}>{e.title}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 2 }}>{typeMeta(e.type).label} · {e.location}</div>
-                </div>
-                {r ? <Badge tone={RSVP_META[r].tone}>{RSVP_META[r].label}</Badge> : <Badge tone="neutral">No response</Badge>}
+          {past.map((e, i) => (
+            <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 18px', borderTop: i ? '1px solid var(--cream-200)' : 'none' }}>
+              <DateBlock iso={e.startsAt} muted />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-800)' }}>{e.title}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 2 }}>{typeMeta(e.type).label} · {e.location}</div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </section>
       </div>

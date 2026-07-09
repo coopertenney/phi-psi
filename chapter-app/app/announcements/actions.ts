@@ -63,17 +63,33 @@ export async function postAnnouncement(input: AnnouncementInput) {
   }
 }
 
+// Exec-only — RLS (ann_delete) enforces it server-side. Removing an
+// announcement cascades its read rows (announcement_reads FK is ON DELETE
+// CASCADE), so no manual cleanup is needed.
+export async function deleteAnnouncement(id: string) {
+  const sb = getServerSupabase();
+  const { error } = await sb.from('announcements').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 // Mark an announcement read for the signed-in member. Idempotent — the PK is
 // (announcement_id, membership_id), so re-marking is a no-op. RLS
 // (announcement_reads_mine) enforces you can only write your own row.
 export async function markAnnouncementRead(announcementId: string) {
+  return markAnnouncementsRead([announcementId]);
+}
+
+// Batch variant: mark several announcements read in one round-trip. Used by the
+// feed to auto-mark everything the member can see the moment they open the tab,
+// so "read" tracks *viewing* rather than a manual click. Idempotent via the same
+// (announcement_id, membership_id) PK; a no-op when `ids` is empty.
+export async function markAnnouncementsRead(ids: string[]) {
+  if (ids.length === 0) return;
   const sb = getServerSupabase();
   const membershipId = await requireMembershipId(sb);
+  const rows = ids.map((announcement_id) => ({ announcement_id, membership_id: membershipId }));
   const { error } = await sb
     .from('announcement_reads')
-    .upsert(
-      { announcement_id: announcementId, membership_id: membershipId },
-      { onConflict: 'announcement_id,membership_id', ignoreDuplicates: true },
-    );
+    .upsert(rows, { onConflict: 'announcement_id,membership_id', ignoreDuplicates: true });
   if (error) throw new Error(error.message);
 }

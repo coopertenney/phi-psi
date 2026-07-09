@@ -102,24 +102,14 @@ insert into attendance (meeting_id, membership_id, state)
     join seed_members sm on sm.email = p.email
   ) x;
 
--- Events (April 2026). RSVP counts are seeded small/real below (the prototype's
--- 38/52-style figures were illustrative for a larger chapter).
+-- Events (April 2026). RSVPs are handled in Partiful (each social carries an
+-- optional partiful_url — see events-partiful.sql), so none are seeded here.
 insert into events (chapter_id, term_id, name, type, starts_at, location, required, points, capacity) values
   ('aaaaaaaa-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000001','Weekly Chapter Meeting','chapter',     '2026-04-12 19:00-07','Chapter House',  true,  10, 52),
   ('aaaaaaaa-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000001','Spring Philanthropy 5K','philanthropy', '2026-04-15 09:00-07','Lake Lagunita',  false, 25, 52),
   ('aaaaaaaa-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000001','Founders Day Formal',   'social',       '2026-04-19 20:00-07','Rosewood Hotel', false, 15, 52),
   ('aaaaaaaa-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000001','Recruitment Info Night','recruitment',  '2026-04-22 18:30-07','Tresidder Union',true,  10, 52),
   ('aaaaaaaa-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000001','Alumni Spring BBQ',     'social',       '2026-04-26 12:00-07','Wilbur Field',   false, 10, 52);
-
--- RSVPs: every non-inactive member is going to the Chapter Meeting + the Formal.
-insert into rsvps (event_id, membership_id, status)
-  select e.id, m.id, 'going'
-  from events e
-  cross join memberships m
-  join profiles p on p.id = m.profile_id
-  join seed_members sm on sm.email = p.email
-  where e.name in ('Weekly Chapter Meeting', 'Founders Day Formal')
-    and sm.status <> 'inactive';
 
 -- Announcements (author = the member who posted).
 insert into announcements (chapter_id, author_id, title, body, pinned)

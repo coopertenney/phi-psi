@@ -55,13 +55,13 @@ export interface ChapterStats {
 }
 
 /* ─────────────────────────── Events & attendance ───────────────────────────
-   In live mode: events/rsvps/meetings/attendance tables (RLS read = chapter
-   member, write = exec, RSVPs writable by self). See CLAUDE.md "RLS still
-   needed". For now these come from the mock seed via lib/data. */
+   In live mode: events/meetings/attendance tables (RLS read = chapter member,
+   write = exec). See CLAUDE.md "RLS still needed". For now these come from the
+   mock seed via lib/data. RSVPs are handled entirely in Partiful (each social
+   carries an optional invite link) — the app tracks no per-member RSVP state. */
 
 export type EventType =
   | 'meeting' | 'philanthropy' | 'social' | 'brotherhood' | 'service' | 'mandatory' | 'recruitment';
-export type RsvpState = 'going' | 'maybe' | 'no'; // absence of a response = null
 // present/late/absent are per-meeting marks; excused/abroad also stand in for a
 // standing MemberTermStatus. Attendance % = present / (present + absent) — late,
 // excused and abroad are neutral (dropped from the denominator).
@@ -86,7 +86,7 @@ export interface EventRow {
   description: string;
   mandatory: boolean;
   pointsValue: number;       // points awarded for attending
-  rsvp: { going: number; maybe: number; no: number }; // aggregate counts
+  partifulUrl: string | null; // optional Partiful invite link (socials); RSVP lives there
 }
 
 // A recurring chapter meeting — the basis for each member's attendance %.
@@ -123,6 +123,12 @@ export interface PointItem {
   points: number;            // catalog value; 0 when discretionary
   kind: PointKind;
   discretionary: boolean;    // sheet's "?" items — exec sets the value per entry
+  sortOrder: number;         // catalog display order (exec reorders in the editor)
+  archived: boolean;         // soft-deleted: hidden from pickers, kept for ledger history
+  maxPerTerm: number | null; // per-member cap per term; null = unlimited
+  autoTrigger: AttendanceState | null; // auto-award when a member hits this attendance state; null = manual
+  selfLoggable: boolean | null;        // override who can self-log; null = default (reward & non-discretionary)
+  autoApprove: boolean;      // a member self-log of this item lands approved (skips the queue)
 }
 
 export interface PointEntry {
@@ -134,6 +140,7 @@ export interface PointEntry {
   date: string;              // ISO
   approvedBy: string;        // exec who logged/approved; '' while pending
   status: PointEntryStatus;  // pending member requests don't count toward totals
+  termId?: string | null;    // term the entry belongs to (for reset-each-term scoping)
   note?: string;
 }
 

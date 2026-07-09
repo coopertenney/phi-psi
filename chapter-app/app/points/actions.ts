@@ -5,32 +5,67 @@ import { requireMembershipId } from '@/lib/membership';
 import { CHAPTER_ID } from '@/lib/chapter';
 import type { AttendanceState, TermStatusKind } from '@/lib/types';
 
+// The chapter's current term id, or null if none is set. Non-throwing (unlike
+// currentTermId below) so logging still works before a term is configured —
+// term-scoped rules (caps / reset) simply don't apply until one exists.
+async function currentTermIdOrNull(sb: ReturnType<typeof getServerSupabase>): Promise<string | null> {
+  const { data } = await sb.from('terms').select('id').eq('chapter_id', CHAPTER_ID).eq('is_current', true).maybeSingle();
+  return data?.id ?? null;
+}
+
+// Enforce an item's per-term cap before an insert. Counts the member's existing
+// entries (approved + pending, so requests can't overshoot the cap) for this
+// item in the given term. No cap or no term → no-op.
+async function assertUnderCap(
+  sb: ReturnType<typeof getServerSupabase>, membershipId: string, itemId: string, termId: string | null,
+) {
+  if (!termId) return;
+  const { data: item } = await sb.from('point_items').select('max_per_term, label').eq('id', itemId).maybeSingle();
+  const cap = item?.max_per_term as number | null | undefined;
+  if (!cap) return;
+  const { count } = await sb.from('points_entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('membership_id', membershipId).eq('item_id', itemId).eq('term_id', termId);
+  if ((count ?? 0) >= cap) throw new Error(`"${item?.label ?? 'This item'}" is capped at ${cap} per term.`);
+}
+
 // Exec-only — RLS (points_entries_cud) enforces it server-side. `points` is
 // passed explicitly rather than re-derived from the item, since discretionary
 // items (the sheet's "?" rows) have exec-chosen values with no catalog default.
+// Stamps the current term so caps + reset-each-term have a term to scope by.
 export async function logPoints(membershipId: string, itemId: string, points: number, approvedBy: string) {
   const sb = getServerSupabase();
+  const termId = await currentTermIdOrNull(sb);
+  await assertUnderCap(sb, membershipId, itemId, termId);
   const { error } = await sb.from('points_entries').insert({
     membership_id: membershipId,
     item_id: itemId,
     points,
     approved_by: approvedBy,
     status: 'approved',   // exec-logged entries count immediately (vs. member requests)
+    term_id: termId,
   });
   if (error) throw new Error(error.message);
 }
 
 // Member self-log: a REQUEST, not an award. RLS (points_entries_self_request)
 // is the real gate — it allows this only for the caller's own membership, a
-// reward/non-discretionary item, at the item's catalog value. Lands as 'pending'
-// and does NOT count toward totals until an exec approves it.
+// self-loggable non-discretionary item, at the item's catalog value. Normally
+// lands 'pending'; an auto_approve item lands 'approved' and counts immediately
+// (the RLS policy permits an approved self-insert only for auto_approve items).
 export async function requestPoints(membershipId: string, itemId: string, points: number) {
   const sb = getServerSupabase();
+  const termId = await currentTermIdOrNull(sb);
+  await assertUnderCap(sb, membershipId, itemId, termId);
+  const { data: item } = await sb.from('point_items').select('auto_approve').eq('id', itemId).maybeSingle();
+  const auto = !!item?.auto_approve;
   const { error } = await sb.from('points_entries').insert({
     membership_id: membershipId,
     item_id: itemId,
     points,
-    status: 'pending',
+    status: auto ? 'approved' : 'pending',
+    approved_by: auto ? 'Auto-approved' : null,
+    term_id: termId,
   });
   if (error) throw new Error(error.message);
 }
@@ -68,13 +103,97 @@ export async function withdrawPointRequest(entryId: string) {
   if (error) throw new Error(error.message);
 }
 
-// Edit a catalog item's point value. Exec-only — RLS (point_items_cud) enforces
-// it server-side. This changes FUTURE awards only: points_entries.points is a
-// snapshot copied at log time, so past entries and existing totals are untouched.
-export async function updatePointItem(itemId: string, points: number) {
+// Edit a catalog item. Exec-only — RLS (point_items_cud) enforces it server-side.
+// Any edit (value, label, kind, discretionary) changes FUTURE awards only:
+// points_entries.points is a snapshot copied at log time, and the ledger reads
+// the label off the entry's item join, so past entries and existing totals are
+// untouched. Callers pass only the fields they changed.
+export interface PointItemPatch {
+  label?: string;
+  points?: number;
+  kind?: 'reward' | 'punishment';
+  discretionary?: boolean;
+  maxPerTerm?: number | null;                         // per-member cap per term
+  autoTrigger?: AttendanceState | null;               // auto-award on attendance state
+  selfLoggable?: boolean | null;                      // override self-log eligibility
+  autoApprove?: boolean;                              // self-log lands approved
+}
+export async function updatePointItem(itemId: string, patch: PointItemPatch) {
   const sb = getServerSupabase();
-  const { error } = await sb.from('point_items').update({ points }).eq('id', itemId);
+  // Map the camelCase patch to snake_case columns; only touch supplied fields.
+  const db: Record<string, unknown> = {};
+  if (patch.label !== undefined) db.label = patch.label;
+  if (patch.points !== undefined) db.points = patch.points;
+  if (patch.kind !== undefined) db.kind = patch.kind;
+  if (patch.discretionary !== undefined) db.discretionary = patch.discretionary;
+  if (patch.maxPerTerm !== undefined) db.max_per_term = patch.maxPerTerm;
+  if (patch.autoTrigger !== undefined) db.auto_trigger = patch.autoTrigger;
+  if (patch.selfLoggable !== undefined) db.self_loggable = patch.selfLoggable;
+  if (patch.autoApprove !== undefined) db.auto_approve = patch.autoApprove;
+  const { error } = await sb.from('point_items').update(db).eq('id', itemId);
   if (error) throw new Error(error.message);
+}
+
+// Chapter-wide scoring rules (floor / ceiling / reset-each-term). Exec-only —
+// RLS on chapters gates the write, same as the dues-payments toggle.
+export interface PointsConfigPatch {
+  pointsFloor?: number;
+  pointsCeiling?: number | null;
+  pointsResetEachTerm?: boolean;
+}
+export async function updatePointsConfig(patch: PointsConfigPatch) {
+  const sb = getServerSupabase();
+  const db: Record<string, unknown> = {};
+  if (patch.pointsFloor !== undefined) db.points_floor = patch.pointsFloor;
+  if (patch.pointsCeiling !== undefined) db.points_ceiling = patch.pointsCeiling;
+  if (patch.pointsResetEachTerm !== undefined) db.points_reset_each_term = patch.pointsResetEachTerm;
+  const { error } = await sb.from('chapters').update(db).eq('id', CHAPTER_ID);
+  if (error) throw new Error(error.message);
+}
+
+// Add a new catalog item. Exec-only via RLS. Appends after the current max
+// sort_order so it lands at the end of its section. Returns the created row so
+// the client can mirror it optimistically.
+export async function createPointItem(
+  input: { label: string; points: number; kind: 'reward' | 'punishment'; discretionary: boolean },
+): Promise<{ id: string; sortOrder: number }> {
+  const sb = getServerSupabase();
+  const { data: max } = await sb
+    .from('point_items').select('sort_order')
+    .eq('chapter_id', CHAPTER_ID).order('sort_order', { ascending: false }).limit(1).maybeSingle();
+  const sortOrder = ((max?.sort_order as number | undefined) ?? 0) + 1;
+  const { data, error } = await sb.from('point_items').insert({
+    chapter_id: CHAPTER_ID,
+    label: input.label.trim(),
+    points: input.discretionary ? 0 : input.points,
+    kind: input.kind,
+    discretionary: input.discretionary,
+    sort_order: sortOrder,
+  }).select('id').single();
+  if (error) throw new Error(error.message);
+  return { id: data.id, sortOrder };
+}
+
+// Soft-delete / restore a catalog item. Exec-only via RLS. Archived items drop
+// out of the Log-points and self-log pickers but stay joinable, so past ledger
+// rows keep their real label instead of rendering "(deleted item)".
+export async function archivePointItem(itemId: string, archived: boolean) {
+  const sb = getServerSupabase();
+  const { error } = await sb.from('point_items').update({ archived }).eq('id', itemId);
+  if (error) throw new Error(error.message);
+}
+
+// Reorder the catalog. Exec-only via RLS. Takes only the rows whose position
+// changed (a neighbor swap = two rows), each with its new sort_order.
+export async function reorderPointItems(updates: { id: string; sortOrder: number }[]) {
+  const sb = getServerSupabase();
+  await Promise.all(
+    updates.map(({ id, sortOrder }) =>
+      sb.from('point_items').update({ sort_order: sortOrder }).eq('id', id).then(({ error }) => {
+        if (error) throw new Error(error.message);
+      }),
+    ),
+  );
 }
 
 /* ─────────────────────────── Attendance ───────────────────────────
@@ -119,7 +238,80 @@ export async function recordAttendance(input: AttendanceInput): Promise<string> 
     const { error } = await sb.from('attendance').upsert(rows, { onConflict: 'meeting_id,membership_id' });
     if (error) throw new Error(error.message);
   }
+  await applyAutoAwards(sb, meetingId, input.entries);
   return meetingId;
+}
+
+// Auto-award (option C): items with an `auto_trigger` are owned by attendance —
+// when a member is recorded in the trigger state, the item is awarded
+// automatically (and it's hidden from the manual Log-points picker, so there's
+// no double-counting). Idempotent per meeting: every re-save first clears this
+// meeting's auto entries, then re-derives them from the states just saved.
+async function applyAutoAwards(
+  sb: ServerSupabase, meetingId: string, entries: { membershipId: string; state: AttendanceState }[],
+) {
+  const { data: autos, error: aErr } = await sb
+    .from('point_items').select('id, points, auto_trigger')
+    .eq('chapter_id', CHAPTER_ID).eq('archived', false).not('auto_trigger', 'is', null);
+  if (aErr) throw new Error(aErr.message);
+  const autoItems = autos ?? [];
+  if (!autoItems.length) return;
+
+  const { error: delErr } = await sb
+    .from('points_entries').delete().eq('meeting_id', meetingId)
+    .in('item_id', autoItems.map((i: any) => i.id));
+  if (delErr) throw new Error(delErr.message);
+
+  const termId = await currentTermIdOrNull(sb);
+  const rows = entries.flatMap((e) =>
+    autoItems
+      .filter((it: any) => it.auto_trigger === e.state)
+      .map((it: any) => ({
+        membership_id: e.membershipId, item_id: it.id, points: it.points,
+        status: 'approved', approved_by: 'Auto (attendance)', meeting_id: meetingId, term_id: termId,
+      })),
+  );
+  if (rows.length) {
+    const { error } = await sb.from('points_entries').insert(rows);
+    if (error) throw new Error(error.message);
+  }
+}
+
+// Schedule a recurring series of chapter meetings in one shot. Skips any dates
+// that already have a meeting for this chapter — `meetings` has no unique on
+// (chapter_id, held_on), only an index, so re-running the scheduler (or
+// overlapping a meeting already created via Take attendance / check-in) would
+// otherwise silently double-create. Returns the freshly-created rows so the
+// client can add them optimistically. Exec-only via the meetings RLS.
+export async function scheduleMeetings(
+  input: { title: string; dates: string[] },
+): Promise<{ id: string; title: string; date: string }[]> {
+  const sb = getServerSupabase();
+  const title = input.title.trim() || 'Chapter meeting';
+  const wanted = [...new Set(input.dates.map((d) => d.slice(0, 10)))].filter(Boolean).sort();
+  if (!wanted.length) return [];
+
+  const term_id = await currentTermId(sb);
+
+  // Which of the requested dates already exist? Bounded query over the range.
+  const { data: existing, error: exErr } = await sb
+    .from('meetings')
+    .select('held_on')
+    .eq('chapter_id', CHAPTER_ID)
+    .gte('held_on', wanted[0])
+    .lte('held_on', wanted[wanted.length - 1]);
+  if (exErr) throw new Error(exErr.message);
+  const taken = new Set((existing ?? []).map((r: any) => String(r.held_on).slice(0, 10)));
+
+  const fresh = wanted.filter((d) => !taken.has(d));
+  if (!fresh.length) return [];
+
+  const { data, error } = await sb
+    .from('meetings')
+    .insert(fresh.map((held_on) => ({ chapter_id: CHAPTER_ID, term_id, title, held_on })))
+    .select('id, title, held_on');
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r: any) => ({ id: r.id, title: r.title, date: r.held_on }));
 }
 
 // Set/replace a member's standing status for the current term (abroad / recurring excuse).

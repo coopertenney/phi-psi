@@ -150,7 +150,7 @@ export function PushNotifications() {
     <div className="pkp-card" style={{ padding: 22 }}>
       <h3 className="pkp-h3" style={{ marginBottom: 6 }}>Notifications</h3>
       <p style={{ color: 'var(--ink-500)', fontSize: 13, margin: '0 0 4px', maxWidth: 460 }}>
-        Get a push notification on this device for chapter announcements, dues reminders, and event RSVPs.
+        Get a push notification on this device for chapter announcements, dues reminders, and new socials.
       </p>
 
       {/* iOS in a Safari tab: push is impossible until installed to the home screen. */}

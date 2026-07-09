@@ -161,7 +161,7 @@ function MemberDrawer({ member: m, onClose, onEdit }: { member: MemberRow; onClo
   const activity = [
     { text: `Earned ${m.points > 300 ? 15 : 10} points at Chapter Meeting`, time: '2 days ago', color: 'var(--hunter-500)' },
     { text: m.duesState === 'paid' ? 'Paid spring term dues in full' : 'Dues reminder sent', time: '1 week ago', color: m.duesState === 'paid' ? 'var(--success-500)' : 'var(--warning-500)' },
-    { text: "RSVP'd to Founders Day Formal", time: '1 week ago', color: 'var(--info-500)' },
+    { text: 'Attended Brotherhood Bowling Night', time: '1 week ago', color: 'var(--info-500)' },
   ];
   const detail = (label: string, value: React.ReactNode) => (
     <div style={{ display: 'flex', justifyContent: 'space-between' }}>

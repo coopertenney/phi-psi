@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, type ReactNode, type CSSProperties } from 'react';
+import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
+import { useEscapeKey } from './useEscapeKey';
 
 /* Shared form primitives — a centered modal dialog + labeled inputs, built on the
    same design tokens as the drawers. Used by the Add/Edit forms across screens. */
@@ -14,17 +16,22 @@ const fieldBase: CSSProperties = {
 export function Modal({ title, sub, onClose, children, footer, width = 460 }: {
   title: string; sub?: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number;
 }) {
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  // Portal to <body> so the fixed overlay escapes the main content's stacking
+  // context (z-index:1) — otherwise it renders *below* the topbar (z-index:5)
+  // and tall modals get clipped by the header bar. Mount-gated to avoid an SSR
+  // hydration mismatch (document isn't available on the server).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  return (
+  useEscapeKey(onClose);
+
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(20,20,19,.42)',
+        position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(20,20,19,.42)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: 'clamp(16px, 4vh, 40px) 16px', animation: 'pkpScrim .2s ease',
       }}
@@ -46,7 +53,8 @@ export function Modal({ title, sub, onClose, children, footer, width = 460 }: {
           <div style={{ padding: '14px 22px', borderTop: '1px solid var(--cream-300)', background: 'var(--white)', display: 'flex', gap: 10, justifyContent: 'flex-end', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)' }}>{footer}</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

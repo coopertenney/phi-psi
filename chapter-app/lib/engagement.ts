@@ -1,10 +1,10 @@
-import type { AttendanceState, RsvpState, EventType } from './types';
+import type { AttendanceState } from './types';
 
 /* ─────────────────────────── Demo clock ───────────────────────────
-   The app is set in Spring Term 2026 (dues post Apr 1). We anchor every relative
-   date here instead of real Date.now() so the upcoming/past split and "x days
-   ago" copy stay stable regardless of the wall clock. */
-export const NOW = new Date('2026-04-15T12:00:00');
+   We anchor every relative date here instead of real Date.now() so the
+   upcoming/past split and "x days ago" copy stay stable regardless of the
+   wall clock. */
+export const NOW = new Date('2026-07-06T12:00:00');
 
 /* ─────────────────────────── Deterministic noise ───────────────────────────
    Stable 32-bit hash → pseudo-random unit, keyed off ids. Same spirit as the
@@ -47,20 +47,3 @@ export const attendancePctFrom = (states: AttendanceState[]): number => {
   const graded = states.filter((s) => s === 'present' || s === 'absent').length;
   return graded ? Math.round((states.filter((s) => s === 'present').length / graded) * 100) : 0;
 };
-
-/* ─────────────────────────── RSVPs ───────────────────────────
-   A member's RSVP to an event (null = no response). Mandatory/meeting types skew
-   heavily toward "going"; optional events spread out. Deterministic by member+event. */
-export function rsvpFor(salt: string, eventId: string, type: EventType, mandatory: boolean): RsvpState | null {
-  const u = unit(`${salt}-${eventId}-rsvp`);
-  if (mandatory || type === 'meeting') {
-    if (u < 0.78) return 'going';
-    if (u < 0.9) return 'maybe';
-    if (u < 0.97) return 'no';
-    return null;
-  }
-  if (u < 0.52) return 'going';
-  if (u < 0.7) return 'maybe';
-  if (u < 0.84) return 'no';
-  return null;
-}

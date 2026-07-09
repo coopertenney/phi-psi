@@ -3,7 +3,7 @@ import type {
   EventRow, EventType, AnnouncementRow, PnmRow, PnmStage, PointItem, PointEntry,
   DriveItem,
 } from '../types';
-import { NOW, memberAttendance, attendancePctFrom, rsvpFor, seededUnit } from '../engagement';
+import { NOW, memberAttendance, attendancePctFrom, seededUnit } from '../engagement';
 import { memberPointTotal } from '../points';
 
 // The prototype roster, shaped as the data-layer's output. Balances follow the
@@ -207,10 +207,13 @@ const PUNISH_SEED: ItemSeed[] = [
 ];
 
 export const mockPointItems: PointItem[] = [
-  ...REWARD_SEED.map(([label, points], i): PointItem => ({ id: `pi-r${i + 1}`, label, points, kind: 'reward', discretionary: false })),
-  ...DISCRETIONARY_SEED.map((label, i): PointItem => ({ id: `pi-d${i + 1}`, label, points: 0, kind: 'reward', discretionary: true })),
-  ...PUNISH_SEED.map(([label, points], i): PointItem => ({ id: `pi-p${i + 1}`, label, points, kind: 'punishment', discretionary: false })),
-];
+  ...REWARD_SEED.map(([label, points], i) => ({ id: `pi-r${i + 1}`, label, points, kind: 'reward' as const, discretionary: false })),
+  ...DISCRETIONARY_SEED.map((label, i) => ({ id: `pi-d${i + 1}`, label, points: 0, kind: 'reward' as const, discretionary: true })),
+  ...PUNISH_SEED.map(([label, points], i) => ({ id: `pi-p${i + 1}`, label, points, kind: 'punishment' as const, discretionary: false })),
+].map((it, i): PointItem => ({
+  ...it, sortOrder: i + 1, archived: false,
+  maxPerTerm: null, autoTrigger: null, selfLoggable: null, autoApprove: false,
+}));
 
 // Neutral start: real members carry no seeded point history — the ledger fills
 // from live self-logs + exec approvals. Catalog (mockPointItems) stays so the
@@ -221,9 +224,23 @@ const pointsById = new Map<string, number>(
   SEED.map((_, i) => { const id = `mock-${i + 1}`; return [id, memberPointTotal(mockPointEntries, id)]; }),
 );
 
+// Alumni (graduated) — kept on the roster ONLY for lineage history. Status
+// 'inactive' is the alum marker: they render in the Lineage tab (getLineageRoster)
+// and are excluded from the members list and every other user-facing surface
+// (getMembers). These are the 14 Graduating Seniors (class 2026) referenced as
+// bigs but off the active roster. Jason Zhang — also missing from the active CSV
+// — is a current Junior (2027), so he is NOT here: he stays an active member.
+const ALUMNI_EMAILS = new Set<string>([
+  'aclaire@stanford.edu', 'kyles7@stanford.edu', 'asdaix@stanford.edu', 'abelfior@stanford.edu',
+  'mjhemker@stanford.edu', 'samshors@stanford.edu', 'grahamjo@stanford.edu', 'jamesu72@stanford.edu',
+  'dcureton@stanford.edu', 'bpigott@stanford.edu', 'aaroncl@stanford.edu', 'mweis2@stanford.edu',
+  'walshp26@stanford.edu', 'jonath4n@stanford.edu',
+]);
+
 export const mockMembers: MemberRow[] = SEED.map((s, i) => {
   const id = `mock-${i + 1}`;
   const pct = attendancePctFrom(attendanceByMember.get(id) ?? []);
+  const status: MemberRow['status'] = ALUMNI_EMAILS.has(s.email) ? 'inactive' : s.status;
   return {
     membershipId: id,
     fullName: s.name,
@@ -231,8 +248,8 @@ export const mockMembers: MemberRow[] = SEED.map((s, i) => {
     email: s.email,
     phone: s.phone,
     position: s.position,
-    roleLabel: roleLabel(s),
-    status: s.status,
+    roleLabel: status === 'inactive' ? 'Alumnus' : roleLabel(s),
+    status,
     classYear: s.classYear,
     committee: s.committee,
     bigName: s.bigs.length ? s.bigs.join(' & ') : null,
@@ -248,30 +265,31 @@ export const mockMembers: MemberRow[] = SEED.map((s, i) => {
 });
 
 export function mockStats(): ChapterStats {
-  const m = mockMembers;
+  // Alumni (inactive) are lineage-only — excluded from every stat, matching the
+  // chapter_stats view. Compute all figures over the non-alumni roster.
+  const m = mockMembers.filter((x) => x.status !== 'inactive');
   const sum = (f: (x: MemberRow) => number) => m.reduce((a, x) => a + f(x), 0);
-  const active = m.filter((x) => x.status !== 'inactive');
   return {
-    activeMembers: active.length,
+    activeMembers: m.length,
     totalMembers: m.length,
     paidCount: m.filter((x) => x.duesState === 'paid').length,
     partialCount: m.filter((x) => x.duesState === 'partial').length,
     dueCount: m.filter((x) => x.duesState === 'due').length,
     collectedCents: sum((x) => 85000 - x.balanceCents),
     targetCents: 85000 * m.length,
-    avgAttendancePct: Math.round(sum((x) => (x.status !== 'inactive' ? x.attendancePct : 0)) / active.length),
+    avgAttendancePct: Math.round(sum((x) => x.attendancePct) / (m.length || 1)),
   };
 }
 
 /* ─────────────────────────── Events ───────────────────────────
-   Five upcoming + three past events, dated relative to the NOW anchor so the
-   upcoming/past split stays stable. Aggregate RSVP counts are summed over the
-   active roster (deterministic via rsvpFor) — the per-member RSVP/attendance the
-   screens need is derived the same way at render time. */
+   Upcoming + past events, dated relative to the NOW anchor so the upcoming/past
+   split stays stable. RSVPs are handled in Partiful (socials carry an optional
+   invite link) — the app tracks no per-member RSVP. */
 
 type EventSeed = {
   id: string; title: string; type: EventType; offsetDays: number; hour: number;
   durHrs: number; location: string; description: string; mandatory: boolean; points: number;
+  partiful?: string; // optional Partiful invite link
 };
 
 const EVENT_SEED: EventSeed[] = [
@@ -279,12 +297,12 @@ const EVENT_SEED: EventSeed[] = [
   { id: 'evt-2', title: 'Weekly Chapter Meeting', type: 'meeting', offsetDays: 3, hour: 19, durHrs: 1.5, location: 'Chapter House — Great Room', description: 'Mandatory weekly business meeting. Committee reports, dues reminders, and a vote on the Founders Day formal budget.', mandatory: true, points: 10 },
   { id: 'evt-3', title: 'Habitat for Humanity Build', type: 'philanthropy', offsetDays: 6, hour: 9, durHrs: 4, location: 'Build Site — 1400 Mission St', description: 'Morning build day with Habitat. Counts for 4 philanthropy hours. Wear closed-toe shoes; breakfast provided.', mandatory: false, points: 25 },
   { id: 'evt-4', title: 'Risk Management Seminar', type: 'mandatory', offsetDays: 8, hour: 18, durHrs: 1.5, location: 'Chapter House — Great Room', description: 'Required risk-management and Title IX seminar led by the national HQ representative. Attendance is recorded for compliance.', mandatory: true, points: 10 },
-  { id: 'evt-5', title: 'Founders Day Formal', type: 'social', offsetDays: 12, hour: 20, durHrs: 4, location: 'Rosewood Ballroom', description: 'Annual Founders Day formal. Bids close Friday — RSVP with your guest count so we can finalize the seating chart.', mandatory: false, points: 15 },
+  { id: 'evt-5', title: 'Founders Day Formal', type: 'social', offsetDays: 12, hour: 20, durHrs: 4, location: 'Rosewood Ballroom', description: 'Annual Founders Day formal. Bids close Friday — RSVP on the Partiful invite with your guest count so we can finalize the seating chart.', mandatory: false, points: 15, partiful: 'https://partiful.com/e/foundersday' },
   { id: 'evt-6', title: 'Alumni Spring BBQ', type: 'brotherhood', offsetDays: -4, hour: 12, durHrs: 3, location: 'Chapter House — Backyard', description: 'Annual alumni networking BBQ. Great turnout from the founding class. Photos posted in the chapter drive.', mandatory: false, points: 10 },
   { id: 'evt-7', title: 'Weekly Chapter Meeting', type: 'meeting', offsetDays: -4, hour: 19, durHrs: 1.5, location: 'Chapter House — Great Room', description: 'Held elections for the spring formal committee and approved the philanthropy calendar.', mandatory: true, points: 10 },
   { id: 'evt-8', title: 'Beach Cleanup', type: 'service', offsetDays: -11, hour: 10, durHrs: 3, location: 'Ocean Beach — Lot C', description: 'Coastal cleanup with the campus service council. Logged 36 service hours for the chapter.', mandatory: false, points: 20 },
   // Extra socials so the Socials agenda timeline reads across several weeks.
-  { id: 'evt-9', title: 'Mixer with Alpha Phi', type: 'social', offsetDays: 2, hour: 21, durHrs: 3, location: 'Chapter House — Great Room', description: 'Co-hosted mixer with Alpha Phi. Theme drops in the group chat Thursday. Sober monitors already assigned.', mandatory: false, points: 3 },
+  { id: 'evt-9', title: 'Mixer with Alpha Phi', type: 'social', offsetDays: 2, hour: 21, durHrs: 3, location: 'Chapter House — Great Room', description: 'Co-hosted mixer with Alpha Phi. Theme drops in the group chat Thursday. Sober monitors already assigned.', mandatory: false, points: 3, partiful: 'https://partiful.com/e/alphaphimixer' },
   { id: 'evt-10', title: 'Wing Wednesday', type: 'brotherhood', offsetDays: 4, hour: 19, durHrs: 2, location: 'Wingstop — University Ave', description: 'Low-key brotherhood dinner. Split the tab; bring a new member and points count double toward the brotherhood tier.', mandatory: false, points: 2 },
   { id: 'evt-11', title: 'Big/Little Reveal', type: 'brotherhood', offsetDays: 9, hour: 19, durHrs: 3, location: 'Chapter House — Backyard', description: 'Reveal night for the new pledge class. Bigs, have your reveal boards ready by 6. Chapter photo after.', mandatory: false, points: 5 },
   { id: 'evt-12', title: 'Spring Day Party w/ Kappa', type: 'social', offsetDays: 16, hour: 14, durHrs: 5, location: 'Chapter House — Lawn', description: 'Annual spring day party. Wristbands required at the door; guest list closes the night before. Setup crew at noon.', mandatory: false, points: 3 },
@@ -298,18 +316,12 @@ export const mockEvents: EventRow[] = EVENT_SEED.map((e) => {
   const end = new Date(start);
   end.setMinutes(end.getMinutes() + e.durHrs * 60);
 
-  const rsvp = { going: 0, maybe: 0, no: 0 };
-  for (const m of mockMembers) {
-    if (m.status === 'inactive') continue;
-    const r = rsvpFor(m.membershipId, e.id, e.type, e.mandatory);
-    if (r) rsvp[r] += 1;
-  }
-
   return {
     id: e.id, title: e.title, type: e.type,
     startsAt: start.toISOString(), endsAt: end.toISOString(),
     location: e.location, description: e.description,
-    mandatory: e.mandatory, pointsValue: e.points, rsvp,
+    mandatory: e.mandatory, pointsValue: e.points,
+    partifulUrl: e.partiful ?? null,
   };
 });
 
@@ -325,7 +337,7 @@ const ann = (offsetDays: number, hour: number): string => {
 
 export const mockAnnouncements: AnnouncementRow[] = [
   { id: 'ann-1', title: 'Spring dues are past due for 3 brothers', body: 'Reminders went out this morning. If your balance shows as overdue on the Finances tab, please settle it before Friday’s chapter meeting to avoid a late fee. Reach out to me directly if you need a payment plan.', author: 'Zachary Ewing', authorRole: 'Treasurer', createdAt: ann(-1, 9), audience: 'all', pinned: true, category: 'finance' },
-  { id: 'ann-2', title: 'Founders Day Formal — RSVP by Friday', body: 'The formal is two weeks out at the Rosewood Ballroom. Add your guest count on the Events tab so we can lock the seating chart and final headcount with the venue.', author: 'Vivek Yarlagedda', authorRole: 'Vice President', createdAt: ann(-2, 17), audience: 'all', pinned: false, category: 'event' },
+  { id: 'ann-2', title: 'Founders Day Formal — RSVP on Partiful', body: 'The formal is two weeks out at the Rosewood Ballroom. RSVP on the Partiful invite (linked on the Socials tab) so we can lock the seating chart and final headcount with the venue.', author: 'Vivek Yarlagedda', authorRole: 'Vice President', createdAt: ann(-2, 17), audience: 'all', pinned: false, category: 'event' },
   { id: 'ann-3', title: 'Habitat build needs 4 more volunteers', body: 'We have six signed up for Saturday’s Habitat for Humanity build and need ten. It’s four philanthropy hours and an easy way to hit your spring requirement. Sign up on the Events tab.', author: 'Owen Grossman', authorRole: 'Historian', createdAt: ann(-3, 12), audience: 'all', pinned: false, category: 'event' },
   { id: 'ann-4', title: 'Officers: budget review before Thursday', body: 'Exec board — please review the draft Q3 budget in the shared drive and leave comments before our Thursday sync. We’re finalizing the formal and philanthropy line items.', author: 'Eddy Duran', authorRole: 'President', createdAt: ann(-4, 20), audience: 'officers', pinned: false, category: 'general' },
   { id: 'ann-5', title: 'Risk management seminar is mandatory', body: 'Next week’s risk-management and Title IX seminar is required for all members — attendance is recorded for nationals. Unexcused absences carry a standards fine. No exceptions this term.', author: 'Cooper Tenney', authorRole: 'Sergeant at Arms', createdAt: ann(-6, 11), audience: 'all', pinned: false, category: 'urgent' },

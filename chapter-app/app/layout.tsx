@@ -3,6 +3,7 @@ import './globals.css';
 import { Providers } from '@/components/Providers';
 import { AppShell } from '@/components/AppShell';
 import { VersionWatcher } from '@/components/VersionWatcher';
+import { DataRefresher } from '@/components/DataRefresher';
 import { getMembers, getCurrentUser, getMyMembershipId } from '@/lib/data';
 import { isSupabaseConfigured } from '@/lib/supabase/server';
 
@@ -20,6 +21,16 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: '#9E1B32', // cardinal-500 — colors the mobile status bar
 };
+
+// Chapter data changes constantly (points, dues, events, attendance) and every
+// device should show the latest. Force dynamic rendering AND opt every Supabase
+// read out of Next's fetch Data Cache: without force-no-store, a soft
+// router.refresh() (see DataRefresher) can re-render and still hand back a
+// cached, stale read in production — the exact staleness bug we hit before.
+// Applies app-wide as a root-segment config. cache() in lib/supabase still
+// dedups reads within a single request, so this doesn't double-fetch.
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Roster for the topbar search, fetched server-side so the live query runs
@@ -58,6 +69,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Providers signedInPersona={signedInPersona}>
           <AppShell members={members} currentUser={currentUser} myMembershipId={myMembershipId} live={isSupabaseConfigured}>{children}</AppShell>
           <VersionWatcher />
+          <DataRefresher />
         </Providers>
       </body>
     </html>

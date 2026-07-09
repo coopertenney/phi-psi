@@ -10,6 +10,7 @@ import { AuthButton } from './AuthButton';
 import { ProfileDialog } from './ProfileDialog';
 import { Modal, ModalActions } from './form';
 import { useApp } from './Providers';
+import { useEscapeKey } from './useEscapeKey';
 import { MOCK_USER } from '@/lib/session';
 import { NAV_TABS, PERSONAS, audienceFor } from '@/lib/nav';
 import type { MemberRow } from '@/lib/types';
@@ -39,6 +40,7 @@ export function AppShell({ members, currentUser, myMembershipId = null, live = f
   // Mobile nav drawer. Closes on any route change so tapping a link dismisses it.
   const [navOpen, setNavOpen] = useState(false);
   useEffect(() => setNavOpen(false), [pathname]);
+  useEscapeKey(() => setNavOpen(false), navOpen);
   // Profile now opens as a popup (no nav tab) from the avatar in the topbar/drawer.
   const [profileOpen, setProfileOpen] = useState(false);
   useEffect(() => setProfileOpen(false), [pathname]);
