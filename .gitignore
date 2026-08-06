@@ -8,6 +8,8 @@
 !/app-foundation/
 !/rollcall-app/
 !/rollcall-app-spec.md
+!/points-app/
+!/phi-psi-points-app-spec.md
 !/phi-kappa-psi-dashboard.html
 !/.gitignore
 
