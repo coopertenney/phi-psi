@@ -114,6 +114,7 @@ body {
 button { font: inherit; }
 @keyframes pkpScrim { from { opacity:0; } to { opacity:1; } }
 @keyframes pkpSlide { from { transform:translateX(100%); } to { transform:translateX(0); } }
+@keyframes pkpPulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
 
 /* ---------- shell ---------- */
 .pkp-app { display:flex; height:100vh; overflow:hidden; }
