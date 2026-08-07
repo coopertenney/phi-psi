@@ -123,14 +123,109 @@ const SEED: Seed[] = [
   { name: 'Romir Jain', email: 'romirj@stanford.edu', phone: '', position: null, status: 'new', classYear: 2029, committee: '', bigs: ['Dylan Sih'], dues: 'paid' },
 ];
 
+// ── Lineage ancestors (alumni-only) ───────────────────────────────────────────
+// Older generations reconstructed from the chapter's Figma lineage tree (the
+// "7-5" export — an edgeless, dark-palette render of the full big/little forest).
+// They exist ONLY to carry lineage history upward: each is status 'inactive', so
+// getMembers / mockStats exclude them and they render as faded nodes in the
+// Lineage tab (getLineageRoster includes them). No emails — status is set
+// directly here, not via ALUMNI_EMAILS. `big: null` = top of a line (the render
+// showed an unknown "?" ancestor above, which we can't name). The parentage of
+// every *current* brother was already correct and is unchanged; this only adds
+// the ancestors above the old name-only anchors. ~22 edges are geometric
+// inferences from the edgeless render (fan-out / offset), marked inline; the rest
+// read cleanly off the columns. See the "verify the connections" artifact.
+type AncestorSeed = { name: string; big: string | null; classYear: number };
+const ANCESTOR_SEED: AncestorSeed[] = [
+  { name: 'Aayush Agarwal', big: null, classYear: 2023 },
+  { name: 'Andy...', big: null, classYear: 2023 },
+  { name: 'Carson Poltorack', big: null, classYear: 2023 },
+  { name: 'Daniel Fishman', big: null, classYear: 2023 },
+  { name: 'Gunner Dongieux', big: null, classYear: 2023 },
+  { name: 'Julio Contreras', big: null, classYear: 2023 },
+  { name: 'Keyshawn King', big: null, classYear: 2023 },
+  { name: 'Raphael Ruban', big: null, classYear: 2023 },
+  { name: 'Umar Nadeem', big: null, classYear: 2023 },
+  { name: 'Alex Finan', big: null, classYear: 2024 },
+  { name: 'Braeden Milford', big: 'Gunner Dongieux', classYear: 2024 },  // inferred (fan-out/offset)
+  { name: 'Carl Schoeller', big: 'Andy...', classYear: 2024 },
+  { name: 'Elliot Dauber', big: 'Gunner Dongieux', classYear: 2024 },  // inferred (fan-out/offset)
+  { name: 'Eric Frankel', big: null, classYear: 2024 },
+  { name: 'Ethan Jones', big: 'Keyshawn King', classYear: 2024 },
+  { name: 'Grant Sheen', big: null, classYear: 2024 },
+  { name: 'Isaac Cheruiyot', big: 'Umar Nadeem', classYear: 2024 },  // inferred (fan-out/offset)
+  { name: 'Jacob Faierman', big: 'Daniel Fishman', classYear: 2024 },
+  { name: 'John Belardi', big: null, classYear: 2024 },
+  { name: 'Josh Mitchell', big: 'Raphael Ruban', classYear: 2024 },
+  { name: 'Justin Thach', big: 'Umar Nadeem', classYear: 2024 },  // inferred (fan-out/offset)
+  { name: 'Kayson Hansen', big: 'Carson Poltorack', classYear: 2024 },
+  { name: 'Kevin Chen', big: null, classYear: 2024 },
+  { name: 'Marcelo Peña', big: 'Julio Contreras', classYear: 2024 },
+  { name: 'Sahit Dendekuri', big: 'Aayush Agarwal', classYear: 2024 },
+  { name: 'Alex Farman', big: 'Josh Mitchell', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Andrej Elez', big: 'Eric Frankel', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Bryan Khoo', big: 'Isaac Cheruiyot', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Charlie Shors', big: null, classYear: 2025 },
+  { name: 'Chehan Wijayaratne', big: 'Sahit Dendekuri', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Dhruv Sumathi', big: null, classYear: 2025 },
+  { name: 'Ernesto Nam Song Woo', big: 'Marcelo Peña', classYear: 2025 },
+  { name: 'Esteban Herrera-Vendrell', big: 'Kevin Chen', classYear: 2025 },
+  { name: 'Ethan Kato', big: 'Elliot Dauber', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Ethan Tiao', big: null, classYear: 2025 },
+  { name: 'Ezra Kohrman', big: null, classYear: 2025 },
+  { name: 'Gareth Cockroft', big: 'Grant Sheen', classYear: 2025 },
+  { name: 'John Bailey', big: 'Josh Mitchell', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'John Kroeger', big: 'Alex Finan', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Jonathan Coronado', big: 'Sahit Dendekuri', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Kevin Yang', big: 'Elliot Dauber', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Max Reisner', big: null, classYear: 2025 },
+  { name: 'Michael Chhay', big: 'Isaac Cheruiyot', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Michael Zhu', big: 'Eric Frankel', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Nathan Kuo', big: 'Eric Frankel', classYear: 2025 },
+  { name: 'Nick Dietrich', big: 'Braeden Milford', classYear: 2025 },
+  { name: 'Nick Reisner', big: 'Carl Schoeller', classYear: 2025 },
+  { name: 'Nolan Mejia', big: 'Justin Thach', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Peter Carpenter', big: 'Alex Finan', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Sam Kwok', big: 'Justin Thach', classYear: 2025 },  // inferred (fan-out/offset)
+  { name: 'Tee Monsureenusorn', big: 'Kayson Hansen', classYear: 2025 },
+  { name: 'Tommy Adams', big: 'Ethan Jones', classYear: 2025 },
+  { name: 'Trevor Jehl', big: 'Josh Mitchell', classYear: 2025 },
+  { name: 'Will Newton', big: null, classYear: 2025 },
+  { name: 'Yahir Ruiz', big: null, classYear: 2025 },
+  { name: 'Zach Hoffman', big: 'Jacob Faierman', classYear: 2025 },
+  { name: 'Adri Arquin', big: 'John Kroeger', classYear: 2026 },  // inferred (fan-out/offset)
+  { name: 'Andrew Park', big: 'Nick Reisner', classYear: 2026 },
+  { name: 'Anthony Chen', big: 'Max Reisner', classYear: 2026 },
+  { name: 'Deveen Harsichandra', big: 'Tee Monsureenusorn', classYear: 2026 },
+  { name: 'Ethan Bernheim', big: 'Zach Hoffman', classYear: 2026 },
+  { name: 'Ethan Kirgan', big: null, classYear: 2026 },
+  { name: 'Garin Gross', big: 'Michael Zhu', classYear: 2026 },
+  { name: 'Lichu Acuna', big: 'Andrej Elez', classYear: 2026 },
+  { name: 'Maxim Ivanov', big: 'Jonathan Coronado', classYear: 2026 },
+  { name: 'Michael Brockman', big: 'Will Newton', classYear: 2026 },
+  { name: 'Milo Golding', big: 'Tommy Adams', classYear: 2026 },
+  { name: 'Nick Buckovich', big: 'John Belardi', classYear: 2026 },
+  { name: 'Odin Farkas', big: 'Charlie Shors', classYear: 2026 },  // inferred (fan-out/offset)
+  { name: 'Ping Tankongchamruskul', big: 'Kevin Yang', classYear: 2026 },
+  { name: 'Sidd Wali', big: null, classYear: 2026 },
+  { name: 'Theo Snoey', big: 'John Bailey', classYear: 2026 },  // inferred (fan-out/offset)
+  { name: 'Titus Parker', big: 'Alex Farman', classYear: 2026 },
+  { name: 'Benji Welner', big: 'Odin Farkas', classYear: 2027 },  // inferred (fan-out/offset)
+  { name: 'Luke Smith', big: 'Tuvana Soronzonbold', classYear: 2029 },  // artifact marks non-member; roster question
+];
+
 const balanceFor = (dues: MemberRow['duesState']) =>
   dues === 'paid' ? 0 : dues === 'partial' ? 35000 : 85000;
 
 const roleLabel = (s: Seed) =>
   s.position ?? (s.status === 'new' ? 'New Member' : 'Brother');
 
-// Invert the big→member relation so each member knows their littles.
-const littlesByBig = SEED.reduce<Record<string, string[]>>((acc, s) => {
+// Invert the big→member relation so each member (and ancestor) knows their
+// littles. Folds in ANCESTOR_SEED so upper-generation alumni get their littles too.
+const littlesByBig = [
+  ...SEED.map((s) => ({ name: s.name, bigs: s.bigs })),
+  ...ANCESTOR_SEED.map((a) => ({ name: a.name, bigs: a.big ? [a.big] : [] })),
+].reduce<Record<string, string[]>>((acc, s) => {
   for (const b of s.bigs) (acc[b] ??= []).push(s.name);
   return acc;
 }, {});
@@ -237,7 +332,7 @@ const ALUMNI_EMAILS = new Set<string>([
   'walshp26@stanford.edu', 'jonath4n@stanford.edu',
 ]);
 
-export const mockMembers: MemberRow[] = SEED.map((s, i) => {
+const memberRows: MemberRow[] = SEED.map((s, i) => {
   const id = `mock-${i + 1}`;
   const pct = attendancePctFrom(attendanceByMember.get(id) ?? []);
   const status: MemberRow['status'] = ALUMNI_EMAILS.has(s.email) ? 'inactive' : s.status;
@@ -263,6 +358,33 @@ export const mockMembers: MemberRow[] = SEED.map((s, i) => {
     flags: flagsFor(s, i, pct),
   };
 });
+
+// Alumni-only ancestor rows (lineage history above the active roster). status
+// 'inactive' set directly (no email → not in ALUMNI_EMAILS), so they stay out of
+// getMembers / mockStats and appear only in the Lineage tab.
+const ancestorRows: MemberRow[] = ANCESTOR_SEED.map((a, i) => ({
+  membershipId: `anc-${i + 1}`,
+  fullName: a.name,
+  avatarUrl: null,
+  email: '',
+  phone: '',
+  position: null,
+  roleLabel: 'Alumnus',
+  status: 'inactive',
+  classYear: a.classYear,
+  committee: '',
+  bigName: a.big,
+  littleNames: littlesByBig[a.name] ?? [],
+  points: 0,
+  attendancePct: 100,
+  balanceCents: 0,
+  chargedCents: 0,
+  paidCents: 0,
+  duesState: 'paid',
+  flags: [],
+}));
+
+export const mockMembers: MemberRow[] = [...memberRows, ...ancestorRows];
 
 export function mockStats(): ChapterStats {
   // Alumni (inactive) are lineage-only — excluded from every stat, matching the
