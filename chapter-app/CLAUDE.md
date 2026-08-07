@@ -4,6 +4,29 @@ Next.js 14 + TypeScript + Supabase (Postgres + Auth + RLS) + Stripe (dues). Host
 Visual/interaction reference: `../phi-kappa-psi-dashboard.html` (self-contained, mock data).
 Schema + seed: `../app-foundation/schema.sql` + `seed.sql`.
 
+## Status: maintenance, not active development (decided Aug 6 2026)
+
+This app is the **archive**. The direction is to unbundle it into focused
+single-purpose apps — `../points-app` (Points & Attendance PWA, its own Supabase
+project) and `../rollcall-app` (Expo + Next monorepo) are the first two, both
+spec'd Aug 3. New feature work goes into a focused app, not here.
+
+What that means for changes in this directory:
+- **Do**: correctness fixes, security/RLS gaps, migrations that make existing
+  data true, dependency and deploy upkeep.
+- **Don't**: new modules, new screens, redesigns. If a request needs one, the
+  question to raise first is which app it belongs in.
+- Modules with no successor app yet — Members roster, Finances/dues,
+  Recruitment, Socials, Files, Lineage, Announcements — keep running here
+  unchanged. Lineage in particular is inherently archival and expected to stay.
+- **The roster is the unbundling's real cost.** Each focused app starts a fresh
+  Supabase project with its own copy of the people, so the 105-brother roster
+  now forks per app and drifts as brothers join, graduate, or change contact
+  info. Accepted for points/attendance (`points-app` spec explicitly accepts
+  ledger drift). NOT acceptable for money: two disagreeing dues ledgers are
+  worse than one stale one, so dues either stays here or moves once, with a
+  real migration — never runs in parallel.
+
 ## Stack
 
 - **Next.js 14 App Router** — server components fetch data; client components handle interactivity
