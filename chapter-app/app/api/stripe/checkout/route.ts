@@ -25,8 +25,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
   const kind: CheckoutKind = body.kind === 'fines' ? 'fines' : 'dues';
-  const amountCents = Math.round(Number(body.amountCents));
-  if (!Number.isFinite(amountCents) || amountCents < 50) {
+  // Fines can't be paid online yet: there's no live fines table, and a recorded
+  // payment has no way to be attributed to a fine — member_finances nets ALL
+  // succeeded payments against dues_charges, so a "fines" charge would silently
+  // reduce the member's DUES balance instead. Reject it server-side (the member
+  // UI already never shows a fines Pay button in live mode) until a fines table
+  // + kind-aware recording exist. See lib/stripe-record.ts.
+  if (kind === 'fines') {
+    return NextResponse.json({ error: 'Fines can’t be paid online yet — ask your treasurer.' }, { status: 400 });
+  }
+  const requestedCents = Math.round(Number(body.amountCents));
+  if (!Number.isFinite(requestedCents) || requestedCents < 50) {
     return NextResponse.json({ error: 'Invalid amount.' }, { status: 400 });
   }
 
@@ -54,6 +63,18 @@ export async function POST(req: Request) {
     .from('memberships').select('id').eq('profile_id', profile.id).eq('chapter_id', CHAPTER_ID).maybeSingle();
   if (!membership) return NextResponse.json({ error: 'Not a member of this chapter.' }, { status: 403 });
 
+  // Never trust the client's amount. Re-derive the real dues balance from
+  // member_finances (RLS scopes this to the member's own row) and charge at
+  // most that — so a stale or tampered client can't overpay into a negative
+  // balance. Paying LESS than the balance is allowed (partial payment).
+  const { data: fin } = await sb
+    .from('member_finances').select('balance_cents').eq('membership_id', membership.id).maybeSingle();
+  const balanceCents = fin?.balance_cents ?? 0;
+  if (balanceCents < 50) {
+    return NextResponse.json({ error: 'No dues balance to pay.' }, { status: 400 });
+  }
+  const amountCents = Math.min(requestedCents, balanceCents);
+
   const stripe = getStripe();
   const origin = process.env.NEXT_PUBLIC_SITE_URL || req.headers.get('origin') || 'http://localhost:3000';
 
@@ -65,7 +86,7 @@ export async function POST(req: Request) {
       price_data: {
         currency: 'usd',
         unit_amount: amountCents,
-        product_data: { name: kind === 'fines' ? 'Chapter fines' : 'Chapter dues' },
+        product_data: { name: 'Chapter dues' },
       },
       quantity: 1,
     }],

@@ -50,7 +50,10 @@ If you'd rather have it redeploy automatically when the code changes:
 Once Supabase is live (see CLAUDE.md), dues/fines payments go through Stripe
 Checkout. Run `app-foundation/stripe-dues.sql` once in the Supabase SQL editor
 first — it adds the Finance Officer's on/off switch (`chapters.dues_payments_enabled`,
-defaults to **off**) and RLS on the `chapters` table.
+defaults to **off**) and RLS on the `chapters` table. Then run
+`app-foundation/payments-idempotency.sql` (also once) — it adds the unique index
+that stops a Stripe payment from being recorded twice when the webhook and the
+success-return verifier race. Safe to run before or after deploying the code.
 
 1. **Stripe account**: create one at stripe.com (or reuse an existing one),
    business type "unincorporated association" fits most chapters. Start in
