@@ -1,0 +1,510 @@
+<title>Cal Beta Dues Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400&display=swap">
+
+<style>
+/* ---------- tokens: light is the base ---------- */
+:root{
+  --ground:#F2F5F0; --surface:#FFFFFF; --surface-2:#E8EDE5; --inset:#F7F9F6;
+  --ink:#171C14; --ink-2:#57614F; --ink-3:#8A9384; --rule:#D5DCCF; --rule-2:#C2CBBA;
+  --brand:#1F4632; --brand-ink:#1F4632; --brand-soft:#E1EBE4; --on-brand:#FFFFFF;
+  --clear:#245C3C; --check:#8A5B0B; --unclear:#A0232B;
+  --clear-soft:#E0EDE4; --check-soft:#F6EAD3; --unclear-soft:#F7E2E2;
+  --shadow:0 1px 2px rgba(23,28,20,.05), 0 8px 24px -16px rgba(23,28,20,.18);
+  --f-display:"Newsreader",Georgia,"Times New Roman",serif;
+  --f-ui:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E120D; --surface:#161B14; --surface-2:#1E251C; --inset:#12170F;
+    --ink:#E7ECE3; --ink-2:#A1AB9B; --ink-3:#727C6D; --rule:#2A3227; --rule-2:#3A4436;
+    --brand:#78BE93; --brand-ink:#8FCCA6; --brand-soft:#1A2C21; --on-brand:#0E120D;
+    --clear:#7CC295; --check:#D9A445; --unclear:#E97C83;
+    --clear-soft:#17281D; --check-soft:#2A2313; --unclear-soft:#2C1819;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E120D; --surface:#161B14; --surface-2:#1E251C; --inset:#12170F;
+  --ink:#E7ECE3; --ink-2:#A1AB9B; --ink-3:#727C6D; --rule:#2A3227; --rule-2:#3A4436;
+  --brand:#78BE93; --brand-ink:#8FCCA6; --brand-soft:#1A2C21; --on-brand:#0E120D;
+  --clear:#7CC295; --check:#D9A445; --unclear:#E97C83;
+  --clear-soft:#17281D; --check-soft:#2A2313; --unclear-soft:#2C1819;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--f-ui); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1060px; margin:0 auto; padding:clamp(20px,4vw,52px) clamp(16px,4vw,32px) 72px;
+  display:flex; flex-direction:column; gap:clamp(28px,4vw,44px)}
+
+/* ---------- masthead ---------- */
+.eyebrow{font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-3)}
+.masthead h1{
+  font-family:var(--f-display); font-weight:500; font-size:clamp(30px,5.4vw,46px);
+  line-height:1.06; letter-spacing:-.015em; margin:.28em 0 0; text-wrap:balance;
+}
+.masthead p{margin:.7em 0 0; max-width:62ch; color:var(--ink-2)}
+.masthead .head-row{display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap}
+
+/* ---------- summary tiles ---------- */
+.summary{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--rule);
+  border:1px solid var(--rule); border-radius:3px; overflow:hidden}
+.tile{background:var(--surface); padding:16px 18px 18px; display:flex; flex-direction:column; gap:4px}
+.tile .k{font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3)}
+.tile .v{font-family:var(--f-display); font-size:clamp(22px,3vw,30px); font-weight:500;
+  font-variant-numeric:tabular-nums; letter-spacing:-.01em; line-height:1.1}
+.tile .n{font-size:12px; color:var(--ink-3)}
+.tile.attn{background:var(--brand-soft)}
+.tile.attn .v{color:var(--brand-ink)}
+@media(max-width:720px){.summary{grid-template-columns:repeat(2,1fr)}}
+
+/* ---------- section frame ---------- */
+.sec{display:flex; flex-direction:column; gap:16px}
+.sec-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  border-bottom:1px solid var(--rule); padding-bottom:9px}
+.sec-head h2{font-family:var(--f-display); font-weight:500; font-size:22px; margin:0; letter-spacing:-.01em}
+.sec-head .count{font-family:var(--f-mono); font-size:12px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+.sec-head .hint{margin-left:auto; font-size:12.5px; color:var(--ink-3); font-style:italic; font-family:var(--f-display)}
+
+/* ---------- decision card ---------- */
+.cards{display:flex; flex-direction:column; gap:12px}
+.card{
+  background:var(--surface); border:1px solid var(--rule); border-radius:3px;
+  border-left:3px solid var(--rule-2); box-shadow:var(--shadow);
+  display:grid; grid-template-columns:minmax(0,1fr) 34px minmax(0,1.08fr);
+  overflow:hidden;
+}
+.card[data-state="clear"]{border-left-color:var(--clear)}
+.card[data-state="check"]{border-left-color:var(--check)}
+.card[data-state="unclear"]{border-left-color:var(--unclear)}
+.card[data-state="return"]{border-left-color:var(--unclear); background:var(--unclear-soft)}
+.card.leaving{opacity:0; transform:translateY(-4px); max-height:0; margin-top:-12px;
+  transition:opacity .22s ease, transform .22s ease, max-height .28s ease, margin .28s ease}
+@media(prefers-reduced-motion:reduce){.card.leaving{transition:none}}
+
+.side{padding:16px 18px; display:flex; flex-direction:column; gap:10px; min-width:0}
+.side .lbl{font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3)}
+.gutter{display:flex; align-items:center; justify-content:center; position:relative}
+.gutter::before{content:""; position:absolute; inset:16px auto 16px 50%; width:1px; background:var(--rule)}
+.gutter span{position:relative; z-index:1; background:var(--surface); color:var(--ink-3);
+  font-family:var(--f-mono); font-size:13px; padding:4px 0; line-height:1}
+.card[data-state="return"] .gutter span{background:var(--unclear-soft)}
+
+.raw{font-family:var(--f-mono); font-size:12.5px; line-height:1.5; color:var(--ink);
+  background:var(--inset); border:1px solid var(--rule); border-radius:2px; padding:9px 10px;
+  word-break:break-word; overflow-wrap:anywhere}
+.meta{display:flex; gap:14px; align-items:baseline; flex-wrap:wrap}
+.amt{font-family:var(--f-display); font-size:24px; font-weight:500; font-variant-numeric:tabular-nums; line-height:1}
+.amt.neg{color:var(--unclear)}
+.date{font-size:12.5px; color:var(--ink-3); font-family:var(--f-mono)}
+
+.guess{display:flex; flex-direction:column; gap:2px}
+.guess .who{font-family:var(--f-display); font-size:19px; font-weight:500; letter-spacing:-.005em}
+.guess .who.none{color:var(--ink-3); font-style:italic}
+.guess .why{font-size:13px; color:var(--ink-2); font-family:var(--f-display); font-style:italic}
+
+.pill{display:inline-flex; align-items:center; gap:6px; align-self:flex-start;
+  font-size:11px; font-weight:600; letter-spacing:.07em; text-transform:uppercase;
+  padding:3px 9px; border-radius:2px; border:1px solid currentColor}
+.pill .dot{width:5px; height:5px; border-radius:50%; background:currentColor}
+.pill.clear{color:var(--clear); background:var(--clear-soft)}
+.pill.check{color:var(--check); background:var(--check-soft)}
+.pill.unclear{color:var(--unclear); background:var(--unclear-soft)}
+.pill.return{color:var(--unclear); background:transparent; border-style:solid; border-width:1.5px}
+
+.acts{display:flex; gap:8px; flex-wrap:wrap; margin-top:auto; padding-top:4px}
+button{font-family:inherit; font-size:13px; cursor:pointer; border-radius:2px; transition:background .15s, border-color .15s, color .15s}
+button:focus-visible{outline:2px solid var(--brand); outline-offset:2px}
+.btn{padding:6px 12px; border:1px solid var(--rule-2); background:var(--surface); color:var(--ink); font-weight:500}
+.btn:hover{border-color:var(--ink-3); background:var(--surface-2)}
+.btn-primary{padding:6px 13px; border:1px solid var(--brand); background:var(--brand); color:var(--on-brand); font-weight:600}
+.btn-primary:hover{filter:brightness(1.12)}
+.btn-quiet{padding:6px 10px; border:1px solid transparent; background:transparent; color:var(--ink-3)}
+.btn-quiet:hover{color:var(--ink); background:var(--surface-2)}
+.btn-danger{padding:6px 13px; border:1px solid var(--unclear); background:transparent; color:var(--unclear); font-weight:600}
+.btn-danger:hover{background:var(--unclear-soft)}
+
+.reassign{display:none; flex-direction:column; gap:8px; padding-top:2px}
+.reassign.open{display:flex}
+.reassign .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+select{font-family:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--rule-2);
+  border-radius:2px; background:var(--surface); color:var(--ink); max-width:100%}
+select:focus-visible{outline:2px solid var(--brand); outline-offset:1px}
+.reassign .cap{font-size:12px; color:var(--ink-3); font-family:var(--f-mono)}
+
+@media(max-width:760px){
+  .card{grid-template-columns:1fr}
+  .gutter{height:26px}
+  .gutter::before{inset:50% 18px auto 18px; width:auto; height:1px; left:18px}
+  .gutter span{padding:0 8px; transform:rotate(90deg)}
+}
+
+/* ---------- ledger ---------- */
+.tablewrap{overflow-x:auto; border:1px solid var(--rule); border-radius:3px; background:var(--surface)}
+table{width:100%; border-collapse:collapse; font-size:14px; min-width:520px}
+th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--rule)}
+th{font-size:10.5px; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3);
+  background:var(--inset); position:sticky; top:0}
+tbody tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right; font-variant-numeric:tabular-nums; font-family:var(--f-mono); font-size:13px}
+td.who{font-weight:500}
+tr.settled td.who{color:var(--ink-2); font-weight:400}
+.tag{display:inline-block; font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+  padding:2px 7px; border-radius:2px; border:1px solid currentColor}
+.tag.paid{color:var(--ink-3); border-color:var(--rule-2)}
+.tag.partial{color:var(--check); background:var(--check-soft)}
+.tag.unpaid{color:var(--unclear); background:var(--unclear-soft)}
+.learned{font-family:var(--f-mono); font-size:11px; color:var(--ink-3); display:block; margin-top:2px}
+
+/* ---------- aliases / empty ---------- */
+.alias-list{display:flex; flex-direction:column; gap:0; border:1px solid var(--rule);
+  border-radius:3px; background:var(--surface); overflow:hidden}
+.alias{display:flex; align-items:center; gap:10px; padding:9px 14px; border-bottom:1px solid var(--rule);
+  font-family:var(--f-mono); font-size:12.5px; flex-wrap:wrap}
+.alias:last-child{border-bottom:none}
+.alias .from{color:var(--ink-2)}
+.alias .arw{color:var(--ink-3)}
+.alias .to{color:var(--brand-ink); font-weight:500}
+.empty{padding:22px 16px; text-align:center; color:var(--ink-3); font-family:var(--f-display);
+  font-style:italic; font-size:15px; border:1px dashed var(--rule-2); border-radius:3px; background:var(--surface)}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--rule); padding-top:20px; display:flex; flex-direction:column; gap:10px}
+footer p{margin:0; font-size:12.5px; color:var(--ink-3); max-width:78ch}
+footer strong{color:var(--ink-2); font-weight:600}
+.toolbar{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+.flash{animation:fl .9s ease}
+@keyframes fl{0%{background:var(--brand-soft)}100%{background:transparent}}
+@media(prefers-reduced-motion:reduce){.flash{animation:none}}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="head-row">
+      <div>
+        <div class="eyebrow">Phi Kappa Psi &middot; Cal Beta &middot; Fall 2026</div>
+        <h1>Dues Desk</h1>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="reset">Reset walkthrough</button>
+      </div>
+    </div>
+    <p>Bank credits arrive with a name and an amount &mdash; never a memo. Everything below is
+      the app&rsquo;s guess at who paid, waiting on an exec to agree or correct it. Each correction
+      is remembered, so the queue gets shorter every term.</p>
+  </header>
+
+  <section class="summary" id="summary" aria-live="polite">
+    <div class="tile"><span class="k">Collected</span><span class="v" id="s-collected">$0</span><span class="n" id="s-collected-n">&mdash;</span></div>
+    <div class="tile"><span class="k">Outstanding</span><span class="v" id="s-out">$0</span><span class="n" id="s-out-n">&mdash;</span></div>
+    <div class="tile attn"><span class="k">Needs review</span><span class="v" id="s-queue">0</span><span class="n" id="s-queue-n">&mdash;</span></div>
+    <div class="tile"><span class="k">Set aside</span><span class="v" id="s-aside">0</span><span class="n">not dues</span></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head">
+      <h2>Review queue</h2>
+      <span class="count" id="q-count"></span>
+      <span class="hint">the bank said &rarr; the app thinks</span>
+    </div>
+    <div class="cards" id="queue"></div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head">
+      <h2>Ledger</h2>
+      <span class="count" id="l-count"></span>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr>
+          <th>Brother</th><th class="num">Owed</th><th class="num">Paid</th>
+          <th class="num">Balance</th><th>Status</th>
+        </tr></thead>
+        <tbody id="ledger"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head">
+      <h2>Learned name matches</h2>
+      <span class="count" id="a-count"></span>
+      <span class="hint">confirmed once, matched automatically after</span>
+    </div>
+    <div id="aliases"></div>
+  </section>
+
+  <footer>
+    <p><strong>Prototype, phase one.</strong> Mock data, no bank connection, resets on refresh.
+      This is the part of the dues tracker that works with no API access at all &mdash; the exec
+      review queue and the ledger. The Plaid feed replaces the hand-entered credits later; the
+      screens do not change.</p>
+    <p><strong>Placeholder:</strong> the raw descriptor strings are written in a generic
+      credit-union format. Stanford FCU&rsquo;s exact Zelle descriptor still needs one redacted
+      real example before the parser is written &mdash; the prefix and the name order vary by
+      institution.</p>
+  </footer>
+</div>
+
+<script>
+const DUES = 450;
+
+function seed(){
+  return {
+    members:[
+      {id:1,  name:"Michael Torres",  owed:DUES, paid:0},
+      {id:2,  name:"Bobby Smith",     owed:DUES, paid:0},
+      {id:3,  name:"David Chen",      owed:DUES, paid:0},
+      {id:4,  name:"Jason Park",      owed:DUES, paid:0},
+      {id:5,  name:"Julian Park",     owed:DUES, paid:0},
+      {id:6,  name:"Andrew Whitfield",owed:DUES, paid:0},
+      {id:7,  name:"Michael Chen",    owed:DUES, paid:0},
+      {id:8,  name:"Tyler Nguyen",    owed:DUES, paid:450},
+      {id:9,  name:"Marcus Hale",     owed:DUES, paid:450},
+      {id:10, name:"Diego Alvarez",   owed:DUES, paid:450},
+      {id:11, name:"Sam Okafor",      owed:DUES, paid:450},
+      {id:12, name:"Ethan Brooks",    owed:DUES, paid:225}
+    ],
+    queue:[
+      {id:"t1", raw:"ZELLE PMT FROM MICHAEL TORRES", amount:450, date:"Oct 3",
+       state:"clear", guess:1, why:"Name matches the roster exactly, and $450 is the full term charge."},
+      {id:"t2", raw:"ZELLE PMT FROM ROBERT M SMITH JR", amount:450, date:"Oct 3",
+       state:"check", guess:2, why:"Surname and amount fit Bobby Smith. “Robert” is likely his legal name — confirm once and it sticks."},
+      {id:"t3", raw:"ZELLE PMT FROM LINDA CHEN", amount:450, date:"Oct 4",
+       state:"unclear", guess:3, why:"Nobody on the roster is Linda. Surname and exact dues amount point at David Chen — probably a parent paying."},
+      {id:"t4", raw:"ZELLE PMT FROM J PARK", amount:450, date:"Oct 4",
+       state:"unclear", guess:null, alts:[4,5],
+       why:"Two brothers fit “J Park” and the amount is right for either. The app will not guess between them."},
+      {id:"t5", raw:"ZELLE PMT FROM ANDREW WHITFIELD", amount:200, date:"Oct 5",
+       state:"check", guess:6, partial:true,
+       why:"Name matches, but $200 is short of the $450 charge — apply as a partial payment."},
+      {id:"t6", raw:"ZELLE PMT FROM MICHAEL CHEN", amount:900, date:"Oct 5",
+       state:"check", guess:7, split:true,
+       why:"Exactly twice the term charge. Likely covering himself and one other brother — split it."},
+      {id:"t7", raw:"MOBILE DEPOSIT — CHECK 2214", amount:120, date:"Oct 6",
+       state:"unclear", guess:null,
+       why:"A deposited check with no name attached and an amount that matches no charge. Probably not dues."},
+      {id:"t8", raw:"ZELLE RETURN — T NGUYEN", amount:-450, date:"Oct 6",
+       state:"return", guess:8,
+       why:"A payment already credited to Tyler Nguyen came back. Reversing it puts him back on the unpaid list."}
+    ],
+    aliases:[],
+    aside:0
+  };
+}
+
+let S = seed();
+const money = n => (n<0?"−$":"$") + Math.abs(n).toLocaleString("en-US");
+const byId = id => S.members.find(m => m.id === id);
+const $ = sel => document.querySelector(sel);
+
+/* ---------- render ---------- */
+function renderSummary(){
+  const owed = S.members.reduce((a,m)=>a+m.owed,0);
+  const paid = S.members.reduce((a,m)=>a+m.paid,0);
+  const settled = S.members.filter(m=>m.paid>=m.owed).length;
+  $("#s-collected").textContent = money(paid);
+  $("#s-collected-n").textContent = Math.round(paid/owed*100) + "% of " + money(owed);
+  $("#s-out").textContent = money(owed-paid);
+  $("#s-out-n").textContent = (S.members.length-settled) + " of " + S.members.length + " brothers still owe";
+  $("#s-queue").textContent = S.queue.length;
+  $("#s-queue-n").textContent = S.queue.length ? "credits awaiting a decision" : "queue is clear";
+  $("#s-aside").textContent = S.aside;
+}
+
+function stateLabel(st){
+  return {clear:"Confident", check:"Check this", unclear:"Unclear", return:"Returned"}[st];
+}
+
+function optionsFor(exclude){
+  return S.members.map(m =>
+    '<option value="'+m.id+'"'+(m.id===exclude?' selected':'')+'>'+m.name+
+    ' — owes '+money(m.owed-m.paid)+'</option>').join("");
+}
+
+function renderQueue(){
+  const wrap = $("#queue");
+  $("#q-count").textContent = S.queue.length ? S.queue.length + " open" : "0 open";
+  if(!S.queue.length){
+    wrap.innerHTML = '<div class="empty">Queue is clear. Every credit has been accounted for.</div>';
+    return;
+  }
+  wrap.innerHTML = S.queue.map(t => {
+    const g = t.guess ? byId(t.guess) : null;
+    let who, acts;
+
+    if(t.state === "return"){
+      who = '<span class="who">Reverse '+g.name+'&rsquo;s payment</span>';
+      acts = '<button class="btn-danger" data-act="reverse" data-id="'+t.id+'">Reverse '+money(450)+'</button>'
+           + '<button class="btn-quiet" data-act="aside" data-id="'+t.id+'">Set aside</button>';
+    } else if(t.alts){
+      who = '<span class="who none">Two brothers fit &mdash; pick one</span>';
+      acts = '<button class="btn-primary" data-act="open" data-id="'+t.id+'">Choose brother</button>'
+           + '<button class="btn-quiet" data-act="aside" data-id="'+t.id+'">Not dues</button>';
+    } else if(!g){
+      who = '<span class="who none">No match on the roster</span>';
+      acts = '<button class="btn" data-act="open" data-id="'+t.id+'">Assign anyway</button>'
+           + '<button class="btn-primary" data-act="aside" data-id="'+t.id+'">Not dues</button>';
+    } else if(t.split){
+      who = '<span class="who">'+g.name+' &nbsp;+&nbsp; one other</span>';
+      acts = '<button class="btn-primary" data-act="open" data-id="'+t.id+'">Split '+money(450)+' / '+money(450)+'</button>'
+           + '<button class="btn" data-act="confirm" data-id="'+t.id+'">All to '+g.name.split(" ")[0]+'</button>'
+           + '<button class="btn-quiet" data-act="aside" data-id="'+t.id+'">Not dues</button>';
+    } else {
+      who = '<span class="who">'+g.name+'</span>';
+      acts = '<button class="btn-primary" data-act="confirm" data-id="'+t.id+'">'
+           + (t.partial ? "Apply "+money(t.amount)+" as partial" : "Confirm")+'</button>'
+           + '<button class="btn" data-act="open" data-id="'+t.id+'">Someone else</button>'
+           + '<button class="btn-quiet" data-act="aside" data-id="'+t.id+'">Not dues</button>';
+    }
+
+    const pickerCaption = t.split
+      ? 'First $450 to' : 'Apply '+money(Math.abs(t.amount))+' to';
+    const picker =
+      '<div class="reassign" id="rx-'+t.id+'">'
+      + '<div class="row"><span class="cap">'+pickerCaption+'</span>'
+      + '<select data-sel="a" data-id="'+t.id+'">'+optionsFor(t.guess||(t.alts?t.alts[0]:null))+'</select></div>'
+      + (t.split ? '<div class="row"><span class="cap">Second $450 to</span>'
+          + '<select data-sel="b" data-id="'+t.id+'">'+optionsFor(null)+'</select></div>' : '')
+      + '<div class="row"><button class="btn-primary" data-act="apply" data-id="'+t.id+'">Apply</button>'
+      + '<button class="btn-quiet" data-act="close" data-id="'+t.id+'">Cancel</button></div>'
+      + '</div>';
+
+    return ''
+    + '<article class="card" data-state="'+t.state+'" id="card-'+t.id+'">'
+    +   '<div class="side">'
+    +     '<span class="lbl">What the bank sent</span>'
+    +     '<code class="raw">'+t.raw+'</code>'
+    +     '<div class="meta"><span class="amt'+(t.amount<0?' neg':'')+'">'+money(t.amount)+'</span>'
+    +       '<span class="date">'+t.date+'</span></div>'
+    +   '</div>'
+    +   '<div class="gutter" aria-hidden="true"><span>&rarr;</span></div>'
+    +   '<div class="side">'
+    +     '<span class="lbl">What the app thinks</span>'
+    +     '<div class="guess">'+who+'<span class="why">'+t.why+'</span></div>'
+    +     '<span class="pill '+t.state+'"><span class="dot"></span>'+stateLabel(t.state)+'</span>'
+    +     picker
+    +     '<div class="acts">'+acts+'</div>'
+    +   '</div>'
+    + '</article>';
+  }).join("");
+}
+
+function renderLedger(){
+  const settled = S.members.filter(m=>m.paid>=m.owed).length;
+  $("#l-count").textContent = settled + " of " + S.members.length + " settled";
+  $("#ledger").innerHTML = S.members.map(m => {
+    const bal = m.owed - m.paid;
+    const st = bal<=0 ? "paid" : (m.paid>0 ? "partial" : "unpaid");
+    const label = bal<=0 ? "Paid" : (m.paid>0 ? "Partial" : "Unpaid");
+    const al = S.aliases.filter(a=>a.to===m.id).map(a=>a.from);
+    return '<tr class="'+(bal<=0?"settled":"")+'" id="row-'+m.id+'">'
+      + '<td class="who">'+m.name
+        + (al.length ? '<span class="learned">also matches: '+al.join(" · ")+'</span>' : '')
+      + '</td>'
+      + '<td class="num">'+money(m.owed)+'</td>'
+      + '<td class="num">'+money(m.paid)+'</td>'
+      + '<td class="num">'+(bal<=0 ? "—" : money(bal))+'</td>'
+      + '<td><span class="tag '+st+'">'+label+'</span></td>'
+      + '</tr>';
+  }).join("");
+}
+
+function renderAliases(){
+  $("#a-count").textContent = S.aliases.length ? S.aliases.length + " stored" : "none yet";
+  const el = $("#aliases");
+  if(!S.aliases.length){
+    el.innerHTML = '<div class="empty">Nothing learned yet. Confirm a payment whose bank name '
+      + 'differs from the roster and the pairing is stored here.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="alias-list">' + S.aliases.map(a =>
+    '<div class="alias"><span class="from">'+a.from+'</span>'
+    + '<span class="arw">&rarr;</span><span class="to">'+byId(a.to).name+'</span></div>').join("")
+    + '</div>';
+}
+
+function renderAll(){ renderSummary(); renderQueue(); renderLedger(); renderAliases(); }
+
+/* ---------- actions ---------- */
+function senderName(raw){
+  return raw.replace(/^ZELLE (PMT FROM|RETURN —)\s*/,"").trim();
+}
+function learn(raw, memberId){
+  const from = senderName(raw);
+  const m = byId(memberId);
+  if(!m || from.toLowerCase() === m.name.toLowerCase()) return;
+  if(S.aliases.some(a => a.from === from)) return;
+  S.aliases.push({from, to:memberId});
+}
+function drop(tid, after){
+  const card = document.getElementById("card-"+tid);
+  const finish = () => { S.queue = S.queue.filter(t=>t.id!==tid); after&&after(); renderAll(); };
+  if(!card) return finish();
+  card.classList.add("leaving");
+  setTimeout(finish, 240);
+}
+function pay(memberId, amount){
+  const m = byId(memberId);
+  if(m) m.paid = Math.max(0, m.paid + amount);
+}
+function flashRow(id){
+  const r = document.getElementById("row-"+id);
+  if(r) r.querySelectorAll("td").forEach(td=>{td.classList.remove("flash"); void td.offsetWidth; td.classList.add("flash");});
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]");
+  if(!b) return;
+  const act = b.dataset.act, tid = b.dataset.id;
+  const t = S.queue.find(x=>x.id===tid);
+  if(!t && act!=="reset") return;
+
+  if(act === "open"){
+    const p = document.getElementById("rx-"+tid);
+    p.classList.add("open"); p.querySelector("select").focus(); return;
+  }
+  if(act === "close"){ document.getElementById("rx-"+tid).classList.remove("open"); return; }
+
+  if(act === "confirm"){
+    const target = t.guess;
+    learn(t.raw, target);
+    drop(tid, ()=>{ pay(target, t.amount); flashRow(target); });
+    return;
+  }
+  if(act === "apply"){
+    const p = document.getElementById("rx-"+tid);
+    const a = +p.querySelector('[data-sel="a"]').value;
+    const bSel = p.querySelector('[data-sel="b"]');
+    if(t.split && bSel){
+      const bId = +bSel.value;
+      if(bId === a){ bSel.focus(); bSel.style.borderColor = "var(--unclear)"; return; }
+      learn(t.raw, a);
+      drop(tid, ()=>{ pay(a,450); pay(bId,450); flashRow(a); flashRow(bId); });
+    } else {
+      learn(t.raw, a);
+      drop(tid, ()=>{ pay(a, t.amount); flashRow(a); });
+    }
+    return;
+  }
+  if(act === "reverse"){
+    const target = t.guess;
+    drop(tid, ()=>{ pay(target, t.amount); flashRow(target); });
+    return;
+  }
+  if(act === "aside"){ drop(tid, ()=>{ S.aside++; }); return; }
+});
+
+$("#reset").addEventListener("click", () => { S = seed(); renderAll(); });
+
+renderAll();
+</script>

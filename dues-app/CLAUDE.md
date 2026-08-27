@@ -6,14 +6,34 @@ account, matches incoming credits to brothers, tracks who still owes what.
 Separate app from `chapter-app/` — own repo, own backend. The chapter app's
 Finances tab keeps running untouched; the two ledgers are independent.
 
-Visual/interaction reference: `dues-desk.html` (self-contained, mock data,
-resets on refresh — same convention as `phi-kappa-psi-dashboard.html`).
+Visual/interaction reference: `dues-desk.html`, in this folder (self-contained,
+mock data, resets on refresh — same convention as `../phi-kappa-psi-dashboard.html`).
+The built app copies its tokens, type scale, and confidence colors verbatim.
 
-## Stack (planned)
+## Status: phase 1 built, mock backend only (Aug 26 2026)
 
-Next.js 14 App Router + TypeScript strict + Supabase (new project) + Plaid
-(read-only transactions). Hosting: Vercel. PWA, installable — mirror
-`chapter-app`'s `public/sw.js` (push-only, no `fetch` handler, caches nothing).
+The ledger and the review queue exist and work end to end against the in-memory
+store — `npm run dev`, then **Load the walkthrough credits** on an empty queue.
+No Supabase project has been created yet, so nothing is live and no real dues
+data exists. `schema.sql` is written but has never been applied.
+
+## Stack
+
+Next.js 14 App Router + TypeScript strict + Supabase (project not created yet)
++ Plaid or Teller later (read-only transactions, phase 2). Hosting: Vercel.
+PWA is not wired yet — when it is, mirror `chapter-app`'s `public/sw.js`
+(push-only, no `fetch` handler, caches nothing).
+
+| Path | Role |
+|------|------|
+| `lib/backend.ts` | The `DuesBackend` interface — the mock/live seam, and later the Plaid writer's shape |
+| `lib/db.ts` | One switch: env vars present → Supabase, absent → mock store. Pages never branch themselves |
+| `lib/match.ts` | The matcher: descriptor parsing, name scoring, tiers, and the reason strings the UI shows |
+| `lib/ledger.ts` | Derives balances, queue, and summary from raw rows — no stored totals |
+| `lib/mock-store.ts` | In-memory backend. State hangs off `globalThis`: Next compiles a server bundle per route in dev, so module-level state gives `/settings` its own empty copy |
+| `lib/sample.ts` | The `dues-desk.html` walkthrough rebuilt against the real roster |
+| `lib/roster.ts` | 105 brothers, forked from `../chapter-app/lib/data/mock.ts` |
+| `scripts/check-matcher.ts`, `scripts/check-flow.ts` | `npx tsx` harnesses for the matcher and the write paths |
 
 ## Two findings that shape the whole design (Aug 27)
 
@@ -70,9 +90,10 @@ Next.js 14 App Router + TypeScript strict + Supabase (new project) + Plaid
 | Table | Notes |
 |---|---|
 | `members` | name, `aka[]` (learned bank-name variants), photo optional. No `auth_user_id` — members don't log in |
+| `adjustments` | opportunity fund: covers dues for brothers on financial aid. Deliberately not a payment, so "collected" keeps meaning money that actually arrived |
 | `dues_charges` | what each brother owes, per term |
 | `bank_txns` | normalized feed rows; `provider_txn_id` **unique** (idempotency), `pending` flag, `removed_at` for reversals |
-| `payments` | a `bank_txn` applied to a member/charge; **unique on `bank_txn_id`** so one credit can never double-count |
+| `payments` | a `bank_txn` applied to a member/charge; **unique on `(bank_txn_id, member_id)`** — not on `bank_txn_id` alone, because one credit legitimately splits across two brothers. Same guarantee where it matters: one credit can never be applied to the same member twice. A reversal is a negative row, never a delete |
 | `match_candidates` | the review queue: txn + ranked guesses + confidence + reason string |
 | `name_aliases` | confirmed `bank string → member` pairings; what makes the queue shrink over time |
 | `sync_state` | Plaid cursor, item/access token |
@@ -107,7 +128,7 @@ logged — see `dues-desk.html`).
 
 ## Phasing
 
-1. **Manual ledger + review queue, no bank connection.** ← start here.
+1. **Manual ledger + review queue, no bank connection.** ← built (mock backend).
    Independently useful, ships fast, de-risks the matching UX before any API
    dependency, and can be built while Plaid production access is pending.
    `dues-desk.html` is the target UX for this phase.
@@ -137,8 +158,14 @@ logged — see `dues-desk.html`).
 - [ ] Get one **redacted real SFCU Zelle descriptor** — prefix and name order
       vary by institution; the parser can't be written without it.
 - [ ] Decide Plaid vs Teller for real, given SFCU is credential-based on Plaid.
-- [ ] Are checks / cash / Venmo tracked in the same ledger (exec enters them
-      by hand alongside matched credits), or bank credits only?
-- [ ] Roster size, dues amount, and payment schedule (lump vs installments) —
-      drives how much the amount signal can disambiguate. Mockup assumes
-      12 brothers at $450/term.
+- [x] Checks / cash / Venmo: **bank credits only** (Aug 26 2026). The one
+      non-bank path is the opportunity fund, which reduces what a brother owes
+      rather than recording money that never arrived.
+- [ ] Dues amount and payment schedule (lump vs installments) — drives how much
+      the amount signal can disambiguate. Roster is settled: the full 105, forked
+      from the chapter app. The amount is a per-term setting an exec types in,
+      not a constant; the walkthrough defaults to $450 only to have something to
+      divide by. **At 105 brothers all owing the same number, amount barely
+      disambiguates at all** — the name is doing nearly all the work, which
+      makes alias learning more load-bearing than the 12-brother mockup implied.
+- [ ] Deploy: no Supabase project, no Vercel project, no PWA yet.
