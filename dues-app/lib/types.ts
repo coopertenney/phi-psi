@@ -12,9 +12,11 @@ export type TxnSource = 'manual' | 'plaid';
 // one payment row points at it; 'set_aside' means an exec said "not dues".
 export type TxnStatus = 'queued' | 'applied' | 'set_aside';
 
-// 'unbilled' is not a payment state — it's a brother with no charge this term,
-// which must not read as "paid".
-export type LedgerStatus = 'paid' | 'partial' | 'unpaid' | 'unbilled';
+// Neither 'unbilled' nor 'exempt' is a payment state. 'unbilled' is a brother
+// nobody has charged yet; 'exempt' is one the chapter decided not to charge —
+// he is abroad this quarter. Both must be visibly different from "paid", or the
+// collected figure starts looking like money that arrived.
+export type LedgerStatus = 'paid' | 'partial' | 'unpaid' | 'unbilled' | 'exempt';
 
 export interface MemberRow {
   id: string;
@@ -34,6 +36,9 @@ export interface MemberRow {
 export interface Term {
   id: string;
   label: string;
+  /** First day of the term. Orders terms honestly — creation order is not the
+   *  same thing — and gives the bank connection a sensible date to start from. */
+  startsOn: string | null;
   isCurrent: boolean;
   duesCents: number | null;   // null until an exec sets the term's dues amount
   // Whether the sync may apply its own certain matches. Per-term because that's
@@ -41,6 +46,19 @@ export interface Term {
   // and persisted because cron runs with nobody watching — it used to be a
   // checkbox on a screen an exec was standing in front of.
   autoApply: boolean;
+}
+
+// A brother the chapter decided not to charge this term — studying abroad. Held
+// per term, not on the member: being abroad in Winter says nothing about Spring.
+// Deliberately an absence of a charge rather than a charge that was waived, so
+// he reads as 'exempt' instead of 'paid' and never appears as money owed.
+export interface Exemption {
+  id: string;
+  memberId: string;
+  termId: string;
+  reason: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface DuesCharge {
@@ -151,6 +169,8 @@ export interface LedgerRow {
   name: string;
   aka: string[];
   financialAid: boolean;
+  /** Abroad this term, so deliberately not charged. */
+  exempt: boolean;
   chargedCents: number;
   oppFundCents: number;
   paidCents: number;
@@ -187,6 +207,7 @@ export interface DeskSummary {
   /** Brothers who owe and aren't on financial aid — the actual follow-up list. */
   followUpCount: number;
   aidCount: number;
+  exemptCount: number;
 }
 
 // One read of everything the desk renders. The whole chapter is ~105 members
@@ -201,6 +222,7 @@ export interface Snapshot {
   txns: BankTxn[];
   payments: PaymentRow[];
   adjustments: Adjustment[];
+  exemptions: Exemption[];
   aliases: NameAlias[];
   /** Who's signed in, for audit fields. 'Exec (mock)' when there's no backend. */
   actor: string;

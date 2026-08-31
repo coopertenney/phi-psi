@@ -9,6 +9,7 @@ import { syncNowAction } from './bank/actions';
 
 const STATUS_LABEL: Record<string, string> = {
   paid: 'Paid', partial: 'Partial', unpaid: 'Unpaid', unbilled: 'Not charged',
+  exempt: 'Abroad',
 };
 
 export const maxDuration = 60;
@@ -77,6 +78,7 @@ export default async function DeskPage({
           <span className="n">
             {stillOwe} to follow up
             {summary.aidCount ? ` · ${summary.aidCount} on financial aid` : ''}
+            {summary.exemptCount ? ` · ${summary.exemptCount} abroad` : ''}
           </span>
         </div>
         <div className="tile attn">

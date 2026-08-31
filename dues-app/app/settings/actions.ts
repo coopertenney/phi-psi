@@ -68,11 +68,30 @@ export async function undoPaymentAction(formData: FormData) {
 export async function createTermAction(formData: FormData) {
   const label = str(formData, 'label');
   const raw = str(formData, 'dues');
+  const startsOn = str(formData, 'startsOn') || null;
   const cents = raw ? parseAmountToCents(raw) : null;
   await run(async () => {
-    if (raw && cents === null) throw new Error('Dues has to be a number, like 450.');
-    await db.createTerm(label, cents);
+    if (raw && cents === null) throw new Error('Dues has to be a number, like 537.');
+    await db.createTerm(label, cents, startsOn);
     return `${label} is now the current term. Charge the roster when you're ready.`;
+  });
+}
+
+export async function markAbroadAction(formData: FormData) {
+  const memberId = str(formData, 'memberId');
+  const reason = str(formData, 'reason');
+  await run(async () => {
+    if (!memberId) throw new Error('Pick a brother.');
+    await db.setExempt(memberId, reason);
+    return 'Marked as abroad — not charged this term.';
+  });
+}
+
+export async function clearAbroadAction(formData: FormData) {
+  const memberId = str(formData, 'memberId');
+  await run(async () => {
+    await db.removeExempt(memberId);
+    return 'Back on the roster for this term. Charge the roster again to bill him.';
   });
 }
 

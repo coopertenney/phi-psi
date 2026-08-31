@@ -18,11 +18,18 @@ declare global {
   }
 }
 
-export function ConnectBank({ mode }: { mode: 'connect' | 'reconnect' }) {
+export function ConnectBank(
+  { mode, defaultStart }: { mode: 'connect' | 'reconnect'; defaultStart?: string | null },
+) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ingestFrom, setIngestFrom] = useState(() => new Date().toISOString().slice(0, 10));
+  // Defaults to the first day of the current term, not today: connecting on
+  // November 3rd with a default of "today" would silently ignore every payment
+  // already made that quarter.
+  const [ingestFrom, setIngestFrom] = useState(
+    () => defaultStart ?? new Date().toISOString().slice(0, 10),
+  );
 
   async function open() {
     setBusy(true);
@@ -75,9 +82,9 @@ export function ConnectBank({ mode }: { mode: 'connect' | 'reconnect' }) {
             onChange={(e) => setIngestFrom(e.target.value)}
           />
           <span className="maphint">
-            Usually the first day of the term. Credits older than this are ignored — they
-            have no charge to match against, so they would arrive as a queue full of rows
-            to dismiss by hand.
+            Set once, then never again. Defaults to the first day of the current term.
+            Payments before this date are ignored — they belong to a term the app never
+            saw, and would arrive as a queue full of rows to dismiss by hand.
           </span>
         </label>
       )}

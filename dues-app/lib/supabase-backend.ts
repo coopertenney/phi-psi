@@ -3,8 +3,8 @@ import type {
   ApplyCreditInput, DuesBackend, FeedApplyResult, FeedPageInput, OppFundInput, RecordCreditInput,
 } from './backend';
 import type {
-  Adjustment, BankStatus, BankTxn, DuesCharge, LedgerStatus, MemberRow, NameAlias, PaymentRow,
-  PublicBalance, Snapshot, SyncRunRow, Term,
+  Adjustment, BankStatus, BankTxn, DuesCharge, Exemption, LedgerStatus, MemberRow, NameAlias,
+  PaymentRow, PublicBalance, Snapshot, SyncRunRow, Term,
 } from './types';
 import { getServiceSupabase, hasServiceRole } from './supabase/service';
 import { isServiceContext } from './supabase/context';
@@ -30,8 +30,12 @@ const toMember = (r: any): MemberRow => ({
   financialAid: r.financial_aid ?? false,
 });
 const toTerm = (r: any): Term => ({
-  id: r.id, label: r.label, isCurrent: r.is_current, duesCents: r.dues_cents ?? null,
-  autoApply: r.auto_apply ?? true,
+  id: r.id, label: r.label, startsOn: r.starts_on ?? null, isCurrent: r.is_current,
+  duesCents: r.dues_cents ?? null, autoApply: r.auto_apply ?? true,
+});
+const toExemption = (r: any): Exemption => ({
+  id: r.id, memberId: r.member_id, termId: r.term_id, reason: r.reason ?? '',
+  createdBy: r.created_by ?? '', createdAt: r.created_at,
 });
 const toCharge = (r: any): DuesCharge => ({
   id: r.id, memberId: r.member_id, termId: r.term_id, amountCents: r.amount_cents,
@@ -93,13 +97,14 @@ async function chargeIdFor(memberId: string, termId: string): Promise<string | n
 export const supabaseBackend: DuesBackend = {
   async getSnapshot(): Promise<Snapshot> {
     const sb = activeClient();
-    const [members, terms, charges, txns, payments, adjustments, aliases, actor] = await Promise.all([
+    const [members, terms, charges, txns, payments, adjustments, exemptions, aliases, actor] = await Promise.all([
       sb.from('members').select('id, name, aka, photo_url').order('name'),
       sb.from('terms').select('*').order('created_at', { ascending: false }),
       sb.from('dues_charges').select('*'),
       sb.from('bank_txns').select('*').order('posted_on'),
       sb.from('payments').select('*').order('created_at'),
       sb.from('adjustments').select('*'),
+      sb.from('exemptions').select('*'),
       sb.from('name_aliases').select('*').order('created_at', { ascending: false }),
       actorEmail(),
     ]);
@@ -109,6 +114,7 @@ export const supabaseBackend: DuesBackend = {
     fail('read bank transactions', txns.error);
     fail('read payments', payments.error);
     fail('read adjustments', adjustments.error);
+    fail('read exemptions', exemptions.error);
     fail('read name aliases', aliases.error);
 
     const allTerms = (terms.data ?? []).map(toTerm);
@@ -120,6 +126,7 @@ export const supabaseBackend: DuesBackend = {
       txns: (txns.data ?? []).map(toTxn),
       payments: (payments.data ?? []).map(toPayment),
       adjustments: (adjustments.data ?? []).map(toAdjustment),
+      exemptions: (exemptions.data ?? []).map(toExemption),
       aliases: (aliases.data ?? []).map(toAlias),
       actor,
     };
@@ -313,7 +320,7 @@ export const supabaseBackend: DuesBackend = {
     fail('set dues', (await sb.from('terms').update({ dues_cents: amountCents }).eq('id', term.id)).error);
   },
 
-  async createTerm(label: string, duesCents: number | null) {
+  async createTerm(label: string, duesCents: number | null, startsOn: string | null) {
     const trimmed = label.trim();
     if (!trimmed) throw new Error('Give the term a name, like "Winter 2027".');
     const sb = activeClient();
@@ -329,7 +336,7 @@ export const supabaseBackend: DuesBackend = {
     fail('close the current term',
       (await sb.from('terms').update({ is_current: false }).eq('is_current', true)).error);
     const { error } = await sb.from('terms')
-      .insert({ label: trimmed, is_current: true, dues_cents: duesCents });
+      .insert({ label: trimmed, is_current: true, dues_cents: duesCents, starts_on: startsOn });
     fail('start the new term', error);
   },
 
@@ -340,19 +347,63 @@ export const supabaseBackend: DuesBackend = {
       (await sb.from('members').update({ financial_aid: enabled }).in('id', memberIds)).error);
   },
 
+  async setExempt(memberId: string, reason: string) {
+    const sb = activeClient();
+    const term = await currentTerm();
+
+    // An exemption is the absence of a charge, not a waived one — so a charge
+    // already issued comes off. Unless money has landed against it, in which
+    // case a human has to decide what happens to the money.
+    const { data: charge, error: chargeError } = await sb.from('dues_charges')
+      .select('id').eq('member_id', memberId).eq('term_id', term.id).maybeSingle();
+    fail('read charge', chargeError);
+    if (charge) {
+      const { data: paid, error: paidError } = await sb.from('payments')
+        .select('id').eq('charge_id', charge.id).limit(1);
+      fail('read payments', paidError);
+      if (paid?.length) {
+        throw new Error(
+          'A payment is already applied to this term for him. Undo it first, then mark him abroad.',
+        );
+      }
+      fail('remove the charge',
+        (await sb.from('dues_charges').delete().eq('id', charge.id)).error);
+    }
+
+    const { error } = await sb.from('exemptions').upsert({
+      member_id: memberId,
+      term_id: term.id,
+      reason: reason.trim(),
+      created_by: await actorEmail(),
+    }, { onConflict: 'member_id,term_id', ignoreDuplicates: true });
+    fail('mark abroad', error);
+  },
+
+  async removeExempt(memberId: string) {
+    const sb = activeClient();
+    const term = await currentTerm();
+    fail('remove the exemption', (await sb.from('exemptions')
+      .delete().eq('member_id', memberId).eq('term_id', term.id)).error);
+  },
+
   async issueCharges() {
-    const sb = getServerSupabase();
+    const sb = activeClient();
     const term = await currentTerm();
     if (!term.duesCents) throw new Error('Set the term dues amount first.');
 
-    const [{ data: members, error: mError }, { data: existing, error: cError }] = await Promise.all([
+    const [{ data: members, error: mError }, { data: existing, error: cError },
+      { data: exempt, error: eError }] = await Promise.all([
       sb.from('members').select('id'),
       sb.from('dues_charges').select('member_id').eq('term_id', term.id),
+      sb.from('exemptions').select('member_id').eq('term_id', term.id),
     ]);
     fail('read members', mError);
     fail('read charges', cError);
+    fail('read exemptions', eError);
 
     const charged = new Set((existing ?? []).map((r: any) => r.member_id));
+    // Brothers who are abroad are skipped, not charged and then zeroed out.
+    (exempt ?? []).forEach((r: any) => charged.add(r.member_id));
     const missing = (members ?? []).filter((m: any) => !charged.has(m.id));
     if (!missing.length) return 0;
 

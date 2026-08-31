@@ -36,6 +36,9 @@ create table if not exists terms (
   -- Null until an exec sets the term's dues amount. The matcher treats a null
   -- dues amount as "no amount signal available" rather than guessing.
   dues_cents integer check (dues_cents is null or dues_cents > 0),
+  -- First day of the term. Orders terms honestly (creation order is not the same
+  -- thing) and gives the bank connection a sensible date to start reading from.
+  starts_on  date,
   -- Whether the bank sync may apply its own certain matches. Per-term, because
   -- that's the right granularity for widening it after watching a term of real
   -- data; persisted rather than a checkbox, because cron runs unattended.
@@ -59,6 +62,20 @@ create table if not exists dues_charges (
 -- The chapter's opportunity fund covering dues for a brother on financial aid.
 -- Deliberately not a payment: it reduces what's owed without inflating
 -- "collected", which must keep meaning "money actually in the account".
+-- A brother the chapter decided not to charge this term — studying abroad.
+-- Per term, because being abroad in Winter says nothing about Spring. It is the
+-- ABSENCE of a charge rather than a charge that was waived: he reads as 'exempt'
+-- instead of 'paid', and never appears as money owed.
+create table if not exists exemptions (
+  id         uuid primary key default gen_random_uuid(),
+  member_id  uuid not null references members(id) on delete cascade,
+  term_id    uuid not null references terms(id) on delete cascade,
+  reason     text not null default '',
+  created_by text not null default '',
+  created_at timestamptz not null default now(),
+  unique (member_id, term_id)
+);
+
 create table if not exists adjustments (
   id           uuid primary key default gen_random_uuid(),
   member_id    uuid not null references members(id) on delete cascade,
@@ -248,6 +265,7 @@ alter table members      enable row level security;
 alter table terms        enable row level security;
 alter table dues_charges enable row level security;
 alter table adjustments  enable row level security;
+alter table exemptions   enable row level security;
 alter table bank_txns    enable row level security;
 alter table payments     enable row level security;
 alter table name_aliases enable row level security;
@@ -259,7 +277,7 @@ alter table sync_runs       enable row level security;
 do $$
 declare tbl text;
 begin
-  foreach tbl in array array['members','terms','dues_charges','adjustments','bank_txns','payments','name_aliases']
+  foreach tbl in array array['members','terms','dues_charges','adjustments','exemptions','bank_txns','payments','name_aliases']
   loop
     execute format('drop policy if exists exec_all on %I', tbl);
     execute format(

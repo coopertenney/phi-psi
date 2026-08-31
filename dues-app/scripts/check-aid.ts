@@ -96,6 +96,43 @@ async function main() {
   check('removing the flag puts him back on the follow-up list',
     cleared.summary.followUpCount === before.summary.followUpCount);
 
+  /* ---- abroad: a real exemption, not a flag ---- */
+  console.log('\n--- abroad ---');
+  const traveller = members.find((m) => m.name === 'Sam Shors')!;
+  const beforeAbroad = buildDesk(await mockBackend.getSnapshot());
+
+  await mockBackend.setExempt(traveller.id, 'Madrid, winter quarter');
+  const abroad = buildDesk(await mockBackend.getSnapshot());
+  const row2 = abroad.rows.find((r) => r.memberId === traveller.id)!;
+
+  console.log(`${row2.name}: charged ${formatCents(row2.chargedCents)} `
+    + `owes ${formatCents(row2.balanceCents)} status ${row2.status}`);
+  console.log(`outstanding: ${formatCents(beforeAbroad.summary.outstandingCents)} → `
+    + `${formatCents(abroad.summary.outstandingCents)}`);
+
+  check('an abroad brother is not charged at all', row2.chargedCents === 0);
+  check('he owes nothing', row2.balanceCents === 0);
+  check('he reads as abroad, not as paid', row2.status === 'exempt',
+    'reading as paid would make the collected figure look like money that arrived');
+  check('the charge came off the chapter total',
+    abroad.summary.outstandingCents === beforeAbroad.summary.outstandingCents - 45000);
+  check('he is off the follow-up list',
+    abroad.summary.followUpCount === beforeAbroad.summary.followUpCount - 1);
+  check('he is counted as abroad', abroad.summary.exemptCount === 1);
+
+  // Charging the roster again must not re-bill him.
+  await mockBackend.issueCharges();
+  const recharged = buildDesk(await mockBackend.getSnapshot());
+  check('charging the roster again skips him',
+    recharged.rows.find((r) => r.memberId === traveller.id)!.chargedCents === 0);
+
+  await mockBackend.removeExempt(traveller.id);
+  await mockBackend.issueCharges();
+  const back = buildDesk(await mockBackend.getSnapshot());
+  const row3 = back.rows.find((r) => r.memberId === traveller.id)!;
+  check('unmarking him and re-charging bills him normally',
+    row3.chargedCents === 45000 && row3.status === 'unpaid');
+
   console.log(failures ? `\n${failures} FAILED` : '\nall aid checks ok');
   process.exit(failures ? 1 : 0);
 }

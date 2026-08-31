@@ -5,7 +5,10 @@
 import { rankCredit } from './match';
 import type { DeskSummary, LedgerRow, LedgerStatus, QueueItem, Snapshot } from './types';
 
-function statusFor(charged: number, owed: number, paid: number): LedgerStatus {
+function statusFor(charged: number, owed: number, paid: number, exempt: boolean): LedgerStatus {
+  // Exempt outranks everything: a brother who is abroad and sent nothing must
+  // never read as 'unpaid' on a follow-up list, and never as 'paid' either.
+  if (exempt && charged === 0) return 'exempt';
   if (charged === 0) return 'unbilled';
   if (paid >= owed) return 'paid';
   return paid > 0 ? 'partial' : 'unpaid';
@@ -33,6 +36,10 @@ export function buildLedger(snap: Snapshot): LedgerRow[] {
     .filter((p) => !termId || p.termId === termId)
     .forEach((p) => paid.set(p.memberId, (paid.get(p.memberId) ?? 0) + p.amountCents));
 
+  const exempt = new Set(
+    snap.exemptions.filter((e) => !termId || e.termId === termId).map((e) => e.memberId),
+  );
+
   return snap.members.map((m) => {
     const chargedCents = charged.get(m.id) ?? 0;
     const oppFundCents = Math.min(oppFund.get(m.id) ?? 0, chargedCents);
@@ -44,6 +51,7 @@ export function buildLedger(snap: Snapshot): LedgerRow[] {
       name: m.name,
       aka: m.aka,
       financialAid: m.financialAid,
+      exempt: exempt.has(m.id),
       chargedCents,
       oppFundCents,
       paidCents,
@@ -53,7 +61,7 @@ export function buildLedger(snap: Snapshot): LedgerRow[] {
       // not a credit that quietly reduces next term's bill.
       balanceCents: Math.max(0, net),
       overpaidCents: Math.max(0, -net),
-      status: statusFor(chargedCents, owedCents, paidCents),
+      status: statusFor(chargedCents, owedCents, paidCents, exempt.has(m.id)),
     };
   });
 }
@@ -86,8 +94,11 @@ export function buildSummary(snap: Snapshot, rows: LedgerRow[], queue: QueueItem
   // Members with nothing charged aren't "settled" — they're just not billed yet.
   const settledCount = rows.filter((r) => r.owedCents > 0 && r.balanceCents <= 0).length;
   // Who to actually chase: owes money and isn't already known to be on aid.
-  const followUpCount = rows.filter((r) => r.balanceCents > 0 && !r.financialAid).length;
+  const followUpCount = rows.filter(
+    (r) => r.balanceCents > 0 && !r.financialAid && !r.exempt,
+  ).length;
   const aidCount = rows.filter((r) => r.financialAid).length;
+  const exemptCount = rows.filter((r) => r.exempt).length;
   return {
     collectedCents,
     chargedCents,
@@ -99,6 +110,7 @@ export function buildSummary(snap: Snapshot, rows: LedgerRow[], queue: QueueItem
     setAsideCount: snap.txns.filter((t) => t.status === 'set_aside').length,
     followUpCount,
     aidCount,
+    exemptCount,
   };
 }
 

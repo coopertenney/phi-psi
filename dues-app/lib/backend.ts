@@ -73,7 +73,7 @@ export interface DuesBackend {
    * the bank connection, learned aliases and financial-aid flags carry over
    * because they belong to the chapter rather than to a term.
    */
-  createTerm(label: string, duesCents: number | null): Promise<void>;
+  createTerm(label: string, duesCents: number | null, startsOn: string | null): Promise<void>;
   /**
    * Mark brothers as being on financial aid — a flag and nothing more. It keeps
    * them off the follow-up list so nobody chases someone the chapter already
@@ -82,6 +82,15 @@ export interface DuesBackend {
    * keeps meaning money that actually arrived.
    */
   setFinancialAid(memberIds: string[], enabled: boolean): Promise<void>;
+  /**
+   * Mark a brother as abroad this term. Unlike financial aid, this is a real
+   * exemption: he is not charged at all, so he owes nothing and appears on no
+   * follow-up list. Held per term — being abroad in Winter says nothing about
+   * Spring. If a charge was already issued it is removed, unless money has
+   * already been applied to it.
+   */
+  setExempt(memberId: string, reason: string): Promise<void>;
+  removeExempt(memberId: string): Promise<void>;
   /** Charge every member who has no charge yet this term. Returns how many. */
   issueCharges(): Promise<number>;
   grantOppFund(input: OppFundInput): Promise<void>;

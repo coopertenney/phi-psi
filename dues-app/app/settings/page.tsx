@@ -3,8 +3,9 @@ import { db, isMockBackend } from '@/lib/db';
 import { buildLedger } from '@/lib/ledger';
 import { formatCents } from '@/lib/money';
 import {
-  applyAidAction, clearAidAction, createTermAction, grantOppFundAction, issueChargesAction,
-  matchAidNamesAction, previewAidNames, removeAdjustmentAction, setDuesAction, undoPaymentAction,
+  applyAidAction, clearAbroadAction, clearAidAction, createTermAction, grantOppFundAction,
+  issueChargesAction, markAbroadAction, matchAidNamesAction, previewAidNames,
+  removeAdjustmentAction, setDuesAction, undoPaymentAction,
 } from './actions';
 
 export default async function SettingsPage({
@@ -24,6 +25,7 @@ export default async function SettingsPage({
   const onAid = rows.filter((r) => r.financialAid);
   // Only present when the exec has pasted a list and is looking at the matches.
   const aidPreview = searchParams.aid ? await previewAidNames(searchParams.aid) : null;
+  const abroad = rows.filter((r) => r.exempt);
 
   return (
     <div className="wrap">
@@ -88,7 +90,11 @@ export default async function SettingsPage({
             </label>
             <label>
               Dues per brother
-              <input name="dues" type="text" inputMode="decimal" placeholder="450" />
+              <input name="dues" type="text" inputMode="decimal" placeholder="537" />
+            </label>
+            <label>
+              First day of the term
+              <input name="startsOn" type="date" />
             </label>
             <button className="btn-primary" type="submit">Start the term</button>
           </form>
@@ -98,8 +104,69 @@ export default async function SettingsPage({
             Nothing is deleted &mdash; {term ? `${term.label}'s` : 'the old term\u2019s'} ledger
             stays exactly as it is. The bank connection, the learned name matches and the financial
             aid list all carry over; they belong to the chapter, not to a term.
+            The start date is used once, to tell the bank connection how far back to read.
           </p>
         </div>
+      </section>
+
+      <section className="sec">
+        <div className="sec-head">
+          <h2>Abroad this term</h2>
+          <span className="hint">
+            {abroad.length ? `${abroad.length} not being charged` : 'nobody is abroad this term'}
+          </span>
+        </div>
+        <div className="panel">
+          <form action={markAbroadAction} className="formrow">
+            <label style={{ flex: '1 1 240px' }}>
+              Brother
+              <select name="memberId" required defaultValue="">
+                <option value="" disabled>Pick a brother</option>
+                {rows.filter((r) => !r.exempt).map((r) => (
+                  <option key={r.memberId} value={r.memberId}>{r.name}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ flex: '1 1 200px' }}>
+              Where
+              <input name="reason" type="text" placeholder="Madrid, winter quarter" />
+            </label>
+            <button className="btn-primary" type="submit">Mark abroad</button>
+          </form>
+          <p className="note">
+            He isn&rsquo;t charged for {term ? term.label : 'this term'} at all, so he owes nothing
+            and never turns up on a follow-up list. This is per term &mdash; next quarter he is
+            billed normally unless you mark him again. If he was already charged, that charge is
+            removed; if a payment has already been applied to it, undo the payment first.
+          </p>
+        </div>
+
+        {abroad.length > 0 && (
+          <div className="tablewrap">
+            <table>
+              <thead><tr><th>Brother</th><th>Where</th><th /></tr></thead>
+              <tbody>
+                {abroad.map((r) => {
+                  const note = snap.exemptions.find(
+                    (e) => e.memberId === r.memberId && (!term || e.termId === term.id),
+                  );
+                  return (
+                    <tr key={r.memberId}>
+                      <td className="who">{r.name}</td>
+                      <td>{note?.reason || '—'}</td>
+                      <td>
+                        <form action={clearAbroadAction}>
+                          <input type="hidden" name="memberId" value={r.memberId} />
+                          <button className="btn-quiet" type="submit">Back this term</button>
+                        </form>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="sec">

@@ -79,6 +79,18 @@ PWA is not wired yet — when it is, mirror `chapter-app`'s `public/sw.js`
   matcher uses — with a confirmation step, because flagging the wrong brother
   stops him being asked to pay and nobody notices a follow-up list that is too
   short.
+- **Abroad is an exemption, financial aid is a flag** (Aug 31 2026) — two
+  different things and they must not be conflated. A brother abroad is **not
+  charged at all** for that term: `exemptions` holds `(member_id, term_id)`, and
+  `issueCharges` skips him, so he owes nothing and reads as `exempt` — never as
+  `paid`, which would make "collected" look like money that arrived. Per term,
+  because being abroad in Winter says nothing about Spring. Financial aid, by
+  contrast, changes no number at all — he is still charged, still owes, and is
+  only kept off the follow-up list.
+- **Dues differ per term** (Aug 31 2026) — Fall $537, Winter $537, Spring $300.
+  Nothing is hardcoded: the amount lives on `terms.dues_cents` and an exec types
+  it in. `terms.starts_on` orders terms honestly (creation order is not the same
+  thing) and gives the bank connection its start date.
 - **Terms roll over in the app** (Aug 30 2026) — `createTerm` clears the old
   `is_current` before inserting, since `terms_one_current` is a unique partial
   index. Balances are per term; the bank connection, cursor, learned aliases and

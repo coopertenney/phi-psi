@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type {
-  Adjustment, BankStatus, BankTxn, DuesCharge, MemberRow, NameAlias, PaymentRow, Snapshot, Term,
+  Adjustment, BankStatus, BankTxn, DuesCharge, Exemption, MemberRow, NameAlias, PaymentRow,
+  Snapshot, Term,
 } from './types';
 import type {
   ApplyCreditInput, DuesBackend, FeedApplyResult, FeedPageInput, OppFundInput, RecordCreditInput,
@@ -26,6 +27,7 @@ interface MockState {
   txns: BankTxn[];
   payments: PaymentRow[];
   adjustments: Adjustment[];
+  exemptions: Exemption[];
   aliases: NameAlias[];
 }
 
@@ -34,11 +36,15 @@ function createState(): MockState {
     members: ROSTER.map((r, i) => ({
       id: `m${i + 1}`, name: r.name, aka: [], photoUrl: null, financialAid: false,
     })),
-    terms: [{ id: 'term1', label: 'Fall 2026', isCurrent: true, duesCents: null, autoApply: true }],
+    terms: [{
+      id: 'term1', label: 'Fall 2026', startsOn: '2026-09-22',
+      isCurrent: true, duesCents: null, autoApply: true,
+    }],
     charges: [],
     txns: [],
     payments: [],
     adjustments: [],
+    exemptions: [],
     aliases: [],
   };
 }
@@ -71,6 +77,7 @@ function snapshot(): Snapshot {
     txns: [...state.txns],
     payments: [...state.payments],
     adjustments: [...state.adjustments],
+    exemptions: [...state.exemptions],
     aliases: [...state.aliases],
     actor: ACTOR,
   };
@@ -229,7 +236,7 @@ export const mockBackend: DuesBackend = {
     requireTerm().duesCents = amountCents;
   },
 
-  async createTerm(label: string, duesCents: number | null) {
+  async createTerm(label: string, duesCents: number | null, startsOn: string | null) {
     if (!label.trim()) throw new Error('Give the term a name, like "Winter 2027".');
     if (state.terms.some((t) => t.label.toLowerCase() === label.trim().toLowerCase())) {
       throw new Error(`There is already a term called "${label.trim()}".`);
@@ -237,7 +244,7 @@ export const mockBackend: DuesBackend = {
     // Only one term is ever current — mirrors the terms_one_current index.
     state.terms.forEach((t) => { t.isCurrent = false; });
     state.terms.unshift({
-      id: randomUUID(), label: label.trim(), isCurrent: true, duesCents, autoApply: true,
+      id: randomUUID(), label: label.trim(), startsOn, isCurrent: true, duesCents, autoApply: true,
     });
   },
 
@@ -248,10 +255,45 @@ export const mockBackend: DuesBackend = {
     });
   },
 
+  async setExempt(memberId: string, reason: string) {
+    const term = requireTerm();
+    if (state.exemptions.some((e) => e.memberId === memberId && e.termId === term.id)) return;
+
+    // An exemption is the absence of a charge, not a waived one — so if he was
+    // already charged, that charge comes off. Unless money has landed against
+    // it, in which case somebody has to decide what happens to the money.
+    const charge = state.charges.find((c) => c.memberId === memberId && c.termId === term.id);
+    if (charge) {
+      const paid = state.payments.some((p) => p.chargeId === charge.id);
+      if (paid) {
+        throw new Error(
+          'A payment is already applied to this term for him. Undo it first, then mark him abroad.',
+        );
+      }
+      state.charges = state.charges.filter((c) => c.id !== charge.id);
+    }
+
+    state.exemptions.push({
+      id: randomUUID(), memberId, termId: term.id, reason: reason.trim(),
+      createdBy: ACTOR, createdAt: new Date().toISOString(),
+    });
+  },
+
+  async removeExempt(memberId: string) {
+    const term = requireTerm();
+    state.exemptions = state.exemptions.filter(
+      (e) => !(e.memberId === memberId && e.termId === term.id),
+    );
+  },
+
   async issueCharges() {
     const term = requireTerm();
     if (!term.duesCents) throw new Error('Set the term dues amount first.');
-    const missing = state.members.filter((m) => !chargeIdFor(m.id, term.id));
+    // Brothers who are abroad are skipped, not charged and then zeroed out.
+    const exempt = new Set(
+      state.exemptions.filter((e) => e.termId === term.id).map((e) => e.memberId),
+    );
+    const missing = state.members.filter((m) => !exempt.has(m.id) && !chargeIdFor(m.id, term.id));
     missing.forEach((m) => {
       state.charges.push({
         id: randomUUID(),

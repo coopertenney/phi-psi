@@ -80,7 +80,7 @@ export default async function BankPage({
 
       {ready && !status.connected && (
         canCreateNewItem || isMockBackend
-          ? <ConnectBank mode="connect" />
+          ? <ConnectBank mode="connect" defaultStart={term?.startsOn ?? null} />
           : (
             <div className="panel">
               <h3>Connecting is locked</h3>

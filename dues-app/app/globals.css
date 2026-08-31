@@ -218,6 +218,8 @@ label input,label select{font-weight:400; letter-spacing:0; text-transform:none;
 /* Being on financial aid is not a problem, so it doesn't get a problem colour. */
 .tag.aid{color:var(--ink-2); background:var(--surface-2); border-color:var(--rule-2);
   margin-left:6px}
+/* Abroad is a deliberate decision, not an unpaid bill — dashed, like 'not charged'. */
+.tag.exempt{color:var(--ink-3); border-color:var(--rule-2); border-style:dashed}
 
 /* ── what the sync did on its own ── */
 .applied{display:flex; flex-direction:column; gap:9px}
