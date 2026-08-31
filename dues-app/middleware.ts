@@ -48,6 +48,11 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+// Note the `api` exclusion: route handlers never pass through this middleware,
+// so /api/cron/sync and the Plaid routes get NO session check from here. Each
+// one authorizes itself — the cron on CRON_SECRET, the Plaid routes on
+// auth.getUser(). Removing `api` from this matcher would break the cron, which
+// has no session to present.
 export const config = {
   matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };

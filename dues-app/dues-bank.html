@@ -1,0 +1,592 @@
+<title>Dues Desk — Bank Sync</title>
+<style>
+  /* Tokens lifted verbatim from app/globals.css so this can be checked against
+     the built app without allowing for drift. */
+  :root{
+    --ground:#F2F5F0; --surface:#FFFFFF; --surface-2:#E8EDE5; --inset:#F7F9F6;
+    --ink:#171C14; --ink-2:#57614F; --ink-3:#8A9384; --rule:#D5DCCF; --rule-2:#C2CBBA;
+    --brand:#1F4632; --brand-ink:#1F4632; --brand-soft:#E1EBE4; --on-brand:#FFFFFF;
+    --clear:#245C3C; --check:#8A5B0B; --unclear:#A0232B;
+    --clear-soft:#E0EDE4; --check-soft:#F6EAD3; --unclear-soft:#F7E2E2;
+    --shadow:0 1px 2px rgba(23,28,20,.05), 0 8px 24px -16px rgba(23,28,20,.18);
+    --f-display:"Newsreader",Georgia,"Times New Roman",serif;
+    --f-ui:"Archivo",system-ui,"Helvetica Neue",Arial,sans-serif;
+    --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E120D; --surface:#161B14; --surface-2:#1E251C; --inset:#12170F;
+      --ink:#E7ECE3; --ink-2:#A1AB9B; --ink-3:#727C6D; --rule:#2A3227; --rule-2:#3A4436;
+      --brand:#78BE93; --brand-ink:#8FCCA6; --brand-soft:#1A2C21; --on-brand:#0E120D;
+      --clear:#7CC295; --check:#D9A445; --unclear:#E97C83;
+      --clear-soft:#17281D; --check-soft:#2A2313; --unclear-soft:#2C1819;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E120D; --surface:#161B14; --surface-2:#1E251C; --inset:#12170F;
+    --ink:#E7ECE3; --ink-2:#A1AB9B; --ink-3:#727C6D; --rule:#2A3227; --rule-2:#3A4436;
+    --brand:#78BE93; --brand-ink:#8FCCA6; --brand-soft:#1A2C21; --on-brand:#0E120D;
+    --clear:#7CC295; --check:#D9A445; --unclear:#E97C83;
+    --clear-soft:#17281D; --check-soft:#2A2313; --unclear-soft:#2C1819;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--ground); color:var(--ink); font-family:var(--f-ui);
+    font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px; margin:0 auto; padding:clamp(20px,4vw,48px) clamp(16px,4vw,32px) 90px;
+    display:flex; flex-direction:column; gap:clamp(20px,3vw,30px)}
+
+  .eyebrow{font-size:11px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-3)}
+  h1{font-family:var(--f-display); font-weight:500; font-size:clamp(29px,5vw,44px); line-height:1.06;
+    letter-spacing:-.015em; margin:.26em 0 0; text-wrap:balance}
+  h2{font-family:var(--f-display); font-weight:500; font-size:22px; letter-spacing:-.01em; margin:0}
+  h3{font-family:var(--f-display); font-weight:500; font-size:17px; margin:0}
+  .lede{margin:.7em 0 0; max-width:66ch; color:var(--ink-2)}
+  .note{font-size:12.5px; color:var(--ink-3); margin:0; max-width:76ch; line-height:1.5}
+  .mono{font-family:var(--f-mono); font-size:12.5px}
+
+  .panel{background:var(--surface); border:1px solid var(--rule); border-radius:3px;
+    padding:18px 20px; display:flex; flex-direction:column; gap:12px; box-shadow:var(--shadow)}
+  .sec{display:flex; flex-direction:column; gap:12px}
+  .sec-head{display:flex; align-items:baseline; justify-content:space-between; gap:14px;
+    flex-wrap:wrap; border-bottom:1px solid var(--rule); padding-bottom:7px}
+  .sec-head .count{font-family:var(--f-mono); font-size:12.5px; color:var(--ink-3)}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+
+  .btn,.btn-primary,.btn-quiet{appearance:none; font:inherit; font-size:13px; font-weight:600;
+    letter-spacing:.02em; padding:9px 16px; border-radius:2px; cursor:pointer;
+    border:1px solid var(--rule-2); background:var(--surface); color:var(--ink);
+    transition:border-color .15s, background .15s, color .15s, opacity .15s}
+  .btn:hover:not(:disabled){border-color:var(--brand); color:var(--brand-ink)}
+  .btn-primary{background:var(--brand); border-color:var(--brand); color:var(--on-brand)}
+  .btn-primary:hover:not(:disabled){filter:brightness(1.12)}
+  .btn-quiet{border-color:transparent; color:var(--ink-3); padding:8px 10px}
+  .btn-quiet:hover{color:var(--unclear)}
+  button:disabled{opacity:.45; cursor:default}
+  :focus-visible{outline:2px solid var(--brand); outline-offset:2px}
+
+  /* connection status */
+  .summary{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--rule);
+    border:1px solid var(--rule); border-radius:3px; overflow:hidden}
+  .tile{background:var(--surface); padding:14px 16px 16px; display:flex; flex-direction:column; gap:3px}
+  .tile .k{font-size:10.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3)}
+  .tile .v{font-family:var(--f-display); font-size:19px; font-weight:500;
+    font-variant-numeric:tabular-nums; letter-spacing:-.01em; line-height:1.15}
+  .tile .v.big{font-size:clamp(21px,2.7vw,28px)}
+  .tile .n{font-size:11.5px; color:var(--ink-3); line-height:1.4}
+  .tile.attn .v{color:var(--check)}
+  .tile.good .v{color:var(--clear)}
+
+  /* the feed viewer */
+  .feed{display:flex; flex-direction:column; gap:1px; background:var(--rule);
+    border:1px solid var(--rule); border-radius:3px; overflow:hidden}
+  .feed .fr{background:var(--surface); padding:10px 14px; display:grid;
+    grid-template-columns:88px 92px 1fr auto; gap:12px; align-items:baseline; font-size:13px}
+  .feed .fr .d{font-family:var(--f-mono); font-size:11.5px; color:var(--ink-3)}
+  .feed .fr .a{font-family:var(--f-mono); font-size:12.5px; font-variant-numeric:tabular-nums; text-align:right}
+  .feed .fr .desc{font-family:var(--f-mono); font-size:12px; color:var(--ink-2); word-break:break-word}
+  .feed .fr .verdict{font-size:11px; font-weight:600; letter-spacing:.05em; text-transform:uppercase;
+    white-space:nowrap}
+  .feed .fr.kept .a{color:var(--clear)}
+  .feed .fr.kept .verdict{color:var(--clear)}
+  .feed .fr.dropped{background:var(--inset)}
+  .feed .fr.dropped .desc{text-decoration:line-through; text-decoration-color:var(--rule-2); color:var(--ink-3)}
+  .feed .fr.dropped .a,.feed .fr.dropped .verdict{color:var(--ink-3)}
+  .feed .fr.ret .a,.feed .fr.ret .verdict{color:var(--check)}
+
+  /* queue cards */
+  .cards{display:flex; flex-direction:column; gap:11px}
+  .card{background:var(--surface); border:1px solid var(--rule); border-left:3px solid var(--rule-2);
+    border-radius:3px; padding:14px 16px; display:grid; gap:10px; box-shadow:var(--shadow)}
+  .card.clear{border-left-color:var(--clear)}
+  .card.check{border-left-color:var(--check)}
+  .card.unclear{border-left-color:var(--unclear)}
+  .card.return{border-left-color:var(--check)}
+  .card.settling{opacity:0; transform:translateY(-6px); transition:opacity .32s, transform .32s}
+  .card .top{display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap}
+  .card .raw{font-family:var(--f-mono); font-size:12.5px; color:var(--ink-2); word-break:break-word}
+  .card .date{font-size:11.5px; color:var(--ink-3); margin-top:2px}
+  .amt{font-family:var(--f-display); font-size:24px; font-weight:500;
+    font-variant-numeric:tabular-nums; line-height:1; white-space:nowrap}
+  .pill{display:inline-flex; align-items:center; gap:6px; font-size:10.5px; font-weight:600;
+    letter-spacing:.09em; text-transform:uppercase; padding:3px 9px; border-radius:999px;
+    border:1px solid currentColor}
+  .pill .dot{width:6px; height:6px; border-radius:50%; background:currentColor}
+  .pill.clear{color:var(--clear); background:var(--clear-soft)}
+  .pill.check{color:var(--check); background:var(--check-soft)}
+  .pill.unclear{color:var(--unclear); background:var(--unclear-soft)}
+  .pill.return{color:var(--check); background:var(--check-soft)}
+  .pill.pending{color:var(--ink-3); background:var(--inset); border-color:var(--rule-2)}
+  .guess{display:flex; flex-direction:column; gap:3px}
+  .guess .who{font-family:var(--f-display); font-size:19px; font-weight:500}
+  .guess .who.none{color:var(--ink-3); font-style:italic}
+  .guess .why{font-size:13px; color:var(--ink-2); max-width:80ch}
+  .acts{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .alts{display:flex; gap:7px; flex-wrap:wrap; align-items:center}
+  .alts .lbl{font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
+  .chip{appearance:none; font:inherit; font-size:12.5px; padding:5px 11px; border-radius:999px;
+    border:1px solid var(--rule-2); background:var(--surface); color:var(--ink-2); cursor:pointer}
+  .chip:hover{border-color:var(--brand); color:var(--brand-ink)}
+
+  /* audit lists */
+  .applied{display:flex; flex-direction:column; gap:9px}
+  .applied .item{display:flex; gap:11px; align-items:flex-start; padding:11px 13px; flex-wrap:wrap;
+    background:var(--inset); border:1px solid var(--rule); border-radius:3px}
+  .applied .who{font-weight:600; font-size:13.5px; white-space:nowrap}
+  .applied .why{font-size:12.5px; color:var(--ink-2); flex:1; min-width:200px; line-height:1.5}
+  .applied .amt-s{font-family:var(--f-mono); font-size:12.5px; font-variant-numeric:tabular-nums;
+    color:var(--clear); white-space:nowrap}
+  .applied .item.rev .amt-s{color:var(--unclear)}
+
+  .flash{font-size:13px; padding:10px 13px; border-radius:2px; margin:0; line-height:1.5}
+  .flash.ok{color:var(--clear); background:var(--clear-soft); border:1px solid var(--clear)}
+  .flash.warn{color:var(--check); background:var(--check-soft); border:1px solid var(--check)}
+  .empty{padding:30px 20px; text-align:center; color:var(--ink-3); font-size:14px;
+    border:1px dashed var(--rule-2); border-radius:3px; background:var(--inset)}
+
+  .tablewrap{overflow-x:auto; border:1px solid var(--rule); border-radius:3px}
+  table{border-collapse:collapse; width:100%; font-size:13px}
+  th{font-size:10.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+    text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule); background:var(--inset); white-space:nowrap}
+  td{padding:9px 12px; border-bottom:1px solid var(--rule)}
+  tr:last-child td{border-bottom:0}
+  td.num,th.num{text-align:right; font-variant-numeric:tabular-nums; font-family:var(--f-mono); font-size:12.5px}
+
+  .step{display:inline-flex; align-items:center; gap:8px; font-size:11.5px; font-weight:600;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--brand-ink);
+    background:var(--brand-soft); border-radius:999px; padding:4px 12px}
+  footer{border-top:1px solid var(--rule); padding-top:16px; color:var(--ink-3); font-size:12.5px;
+    display:flex; flex-direction:column; gap:6px}
+  footer code{font-family:var(--f-mono); font-size:12px; color:var(--ink-2)}
+
+  @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms !important}}
+  @media (max-width:760px){
+    .summary{grid-template-columns:repeat(2,1fr)}
+    .feed .fr{grid-template-columns:1fr; gap:3px}
+    .feed .fr .a{text-align:left}
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Phi Kappa Psi · Cal Beta · Fall 2026</div>
+    <h1>The bank reads itself</h1>
+    <p class="lede">
+      A click-through of the live bank connection, driven by the same data
+      <code class="mono">scripts/trace-sync.ts</code> produces. Press
+      <strong>Check for new payments</strong> to advance a day at a time — each press walks a
+      different thing that can go wrong, not a happy path repeated.
+    </p>
+  </header>
+
+  <p class="flash warn" id="dayHint">
+    Day 1 of 3 · payments arrive, one of them still pending at the bank
+  </p>
+
+  <section class="summary">
+    <div class="tile">
+      <span class="k">Bank</span>
+      <span class="v">Stanford FCU</span>
+      <span class="n">Chapter Checking ••1234</span>
+    </div>
+    <div class="tile">
+      <span class="k">Collected</span>
+      <span class="v big" id="tCollected">$0</span>
+      <span class="n" id="tCollectedN">of $47,250 charged</span>
+    </div>
+    <div class="tile attn">
+      <span class="k">Needs review</span>
+      <span class="v big" id="tQueue">0</span>
+      <span class="n" id="tQueueN">nothing checked yet</span>
+    </div>
+    <div class="tile good">
+      <span class="k">Last checked</span>
+      <span class="v" id="tSynced">never</span>
+      <span class="n">and every morning at 7</span>
+    </div>
+  </section>
+
+  <div class="panel">
+    <div class="row">
+      <button class="btn-primary" type="button" id="sync">Check for new payments</button>
+      <span class="step" id="stepLabel">Step 1 — the first sync</span>
+    </div>
+    <p class="note" id="stepNote">
+      Reads the chapter account through Plaid. Only money coming in is ever stored; the
+      chapter&rsquo;s own spending is counted and thrown away before it reaches the database.
+    </p>
+  </div>
+
+  <p class="flash ok" id="flash" hidden></p>
+
+  <section class="sec" id="feedSec" hidden>
+    <div class="sec-head">
+      <h2>What the bank sent</h2>
+      <span class="count" id="feedCount"></span>
+    </div>
+    <p class="note">
+      Plaid reports a checking account with <strong>positive meaning money out</strong>, so
+      every amount is flipped on the way in. Get that backwards and every dues payment is
+      filed as chapter spending and silently dropped.
+    </p>
+    <div class="feed" id="feed"></div>
+  </section>
+
+  <section class="sec" id="queueSec" hidden>
+    <div class="sec-head">
+      <h2>Waiting on you</h2>
+      <span class="count" id="queueCount"></span>
+      <span class="count">the bank said &rarr; the app thinks</span>
+    </div>
+    <div class="cards" id="queue"></div>
+    <div class="empty" id="queueEmpty" hidden>Queue is clear. Every credit is accounted for.</div>
+  </section>
+
+  <section class="sec" id="autoSec" hidden>
+    <div class="sec-head">
+      <h2>Applied without asking you</h2>
+      <span class="count" id="autoCount"></span>
+    </div>
+    <p class="note">
+      Only when the sender can be exactly one brother <em>and</em> the amount is exactly what
+      he still owes. Each one records why, and undo puts the credit back in the queue.
+    </p>
+    <div class="applied" id="autoList"></div>
+  </section>
+
+  <section class="sec" id="revSec" hidden>
+    <div class="sec-head">
+      <h2>Taken back by the bank</h2>
+      <span class="count">reversed automatically</span>
+    </div>
+    <p class="note">
+      A <em>return</em> written in a descriptor is a guess about text, so it waits for you. The
+      bank reporting a transaction <em>removed</em> is not a guess — it is the bank saying the
+      money never arrived, so it reverses on its own rather than sitting credited overnight.
+    </p>
+    <div class="applied" id="revList"></div>
+  </section>
+
+  <section class="sec" id="ledgerSec" hidden>
+    <div class="sec-head">
+      <h2>The ledger</h2>
+      <span class="count" id="ledgerCount"></span>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Brother</th><th class="num">Paid</th><th class="num">Balance</th><th>Status</th></tr></thead>
+        <tbody id="ledger"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div>Mockup of <code>dues-app</code> · data from <code>npx tsx scripts/trace-sync.ts</code>.</div>
+    <div>Tokens, type scale and confidence colours are the built app&rsquo;s own.</div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const DUES = 45000;
+  const CHARGED = 105 * DUES;
+
+  const money = (c) => {
+    const sign = c < 0 ? '−' : '';
+    const abs = Math.abs(c), d = Math.floor(abs / 100), r = abs % 100;
+    return sign + '$' + d.toLocaleString('en-US') + (r ? '.' + String(r).padStart(2, '0') : '');
+  };
+  const el = (id) => document.getElementById(id);
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+
+  // Verbatim from the matcher, via scripts/trace-sync.ts.
+  const DAY1 = [
+    { id:'t1', date:'2026-10-03', cents:45000, raw:'ZELLE PMT FROM JOSHUA KOCH', pending:true,
+      tier:'clear', who:'Joshua Koch', score:1.00, alts:[],
+      why:'Name matches the roster exactly. $450 is exactly what they still owe.' },
+    { id:'t2', date:'2026-10-03', cents:45000, raw:'ZELLE PMT FROM SAMUEL M SHORS JR', pending:false,
+      tier:'clear', who:'Sam Shors', score:0.97, alts:[], auto:true,
+      why:'Surname matches, and "SAMUEL" and "SAM" are the same name. $450 is exactly what they still owe.' },
+    { id:'t3', date:'2026-10-04', cents:45000, raw:'ZELLE PMT FROM LINDA CAHILLY', pending:false,
+      tier:'check', who:'Lundeen Cahilly', score:0.66, alts:['Dylan Cahilly'],
+      why:'Surname matches, but "LINDA" isn’t anyone on the roster — this reads as family, and more than one brother shares that surname. $450 is exactly what they still owe.' },
+    { id:'t4', date:'2026-10-04', cents:45000, raw:'ZELLE PMT FROM J ZHANG', pending:false,
+      tier:'unclear', who:null, score:0, alts:['Jason Zhang','Joseph Zhang'],
+      why:'Jason Zhang and Joseph Zhang fit this sender equally well and the amount works for either. Refusing to guess — pick one.' },
+    { id:'t5', date:'2026-10-05', cents:20250, raw:'ZELLE PMT FROM GRAHAM JOHNSTONE', pending:false,
+      tier:'check', who:'Graham Johnstone', score:1.00, alts:[],
+      why:'Name matches the roster exactly. $202.50 is short of the $450 still owed — apply it as a partial payment.' },
+    { id:'t6', date:'2026-10-05', cents:90000, raw:'ZELLE PMT FROM ZACHARY EWING', pending:false,
+      tier:'check', who:'Zachary Ewing', score:1.00, alts:[],
+      why:'Name matches the roster exactly. $900 is exactly 2× the $450 term charge — likely covering more than one brother.' },
+    { id:'t7', date:'2026-10-06', cents:12000, raw:'MOBILE DEPOSIT — CHECK 2214', pending:false,
+      tier:'unclear', who:null, score:0, alts:[],
+      why:'This isn’t a transfer from a person — no sender name to match, and $120 matches no outstanding charge. Probably not dues.' },
+    { id:'t8', date:'2026-10-06', cents:-45000, raw:'ZELLE RETURN — S COUSINS', pending:false,
+      tier:'return', who:'Sam Cousins', score:0.83, alts:[],
+      why:'A credit already applied to Sam Cousins came back. Reversing it puts them back on the unpaid list.' },
+  ];
+
+  const DROPPED_DAY1 = [
+    { date:'2026-10-03', cents:-840000, raw:'ACH DEBIT — UNIVERSITY HOUSING RENT', why:'money out' },
+    { date:'2026-10-04', cents:-61244, raw:'DEBIT CARD PURCHASE — COSTCO WHOLESALE #1023', why:'money out' },
+    { date:'2026-10-05', cents:100000, raw:'TRANSFER FROM SAVINGS', why:'other account' },
+    { date:'2026-08-01', cents:45000, raw:'ZELLE PMT FROM A GRADUATE', why:'before the start date' },
+  ];
+
+  const state = { day: 0, queue: [], auto: [], reversed: [], paid: new Map(), syncedAt: null };
+
+  const STEPS = [
+    {
+      label: 'Step 1 — the first sync',
+      hint: 'Day 1 of 3 · payments arrive, one of them still pending at the bank',
+      note: 'Reads the chapter account through Plaid. Only money coming in is ever stored; the chapter’s own spending is counted and thrown away before it reaches the database.',
+    },
+    {
+      label: 'Step 2 — a pending payment settles',
+      hint: 'Day 2 of 3 · the bank replaces the pending payment with its posted twin',
+      note: 'The bank sends a NEW transaction id that names the pending one it replaces, and reports the old id as removed in the same breath. The row is updated in place, keeping its identity — inserting a second row is how one $450 payment becomes $900 on the ledger.',
+    },
+    {
+      label: 'Step 3 — the bank takes one back',
+      hint: 'Day 3 of 3 · a payment that was already applied is reversed',
+      note: 'The bank reports a transaction removed. Because it had already been applied to a brother, the payment is reversed automatically — a negative row, never a deletion — and he goes back on the unpaid list.',
+    },
+    {
+      label: 'Nothing new',
+      hint: 'Re-checking is safe — the ledger does not move',
+      note: 'Every transaction carries the bank’s own id, and our place in the history is saved only after the writes land. Checking again re-reads the same page and records nothing.',
+    },
+  ];
+
+  function feedRow(r, kind, verdict) {
+    return `<div class="fr ${kind}">
+      <span class="d">${r.date}</span>
+      <span class="a">${money(r.cents)}</span>
+      <span class="desc">${esc(r.raw)}</span>
+      <span class="verdict">${verdict}</span>
+    </div>`;
+  }
+
+  function renderFeed(rows) {
+    el('feedSec').hidden = false;
+    el('feed').innerHTML = rows.join('');
+  }
+
+  function render() {
+    const collected = [...state.paid.values()].reduce((a, b) => a + b, 0);
+    el('tCollected').textContent = money(collected);
+    el('tCollectedN').textContent = `of ${money(CHARGED)} charged`;
+    el('tQueue').textContent = String(state.queue.length);
+    el('tQueueN').textContent = state.queue.length ? 'credits awaiting a decision' : 'queue is clear';
+    el('tSynced').textContent = state.syncedAt ?? 'never';
+
+    el('queueSec').hidden = state.day === 0;
+    el('queueCount').textContent = state.queue.length
+      ? `${state.queue.length} open` : 'nothing left';
+    el('queueEmpty').hidden = state.queue.length > 0;
+    el('queue').innerHTML = state.queue.map((c) => `
+      <article class="card ${c.tier}" data-card="${c.id}">
+        <div class="top">
+          <div>
+            <div class="raw">${esc(c.raw)}</div>
+            <div class="date">posted ${c.date}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+            ${c.pending ? '<span class="pill pending"><span class="dot"></span>Pending</span>' : ''}
+            <span class="pill ${c.tier}"><span class="dot"></span>${
+              c.tier === 'clear' ? 'Clear' : c.tier === 'check' ? 'Check this'
+              : c.tier === 'return' ? 'Came back' : 'Unclear'}</span>
+            <span class="amt">${money(c.cents)}</span>
+          </div>
+        </div>
+        <div class="guess">
+          <span class="who ${c.who ? '' : 'none'}">${c.who ?? 'No match on the roster'}${
+            c.who ? ` <span class="mono" style="color:var(--ink-3); font-size:12px">${c.score.toFixed(2)}</span>` : ''}</span>
+          <span class="why">${c.why}</span>
+        </div>
+        ${c.pending ? `<p class="note" style="margin:0">Not settled at the bank yet, so it is never
+          applied automatically — money that might still vanish does not mark anyone paid.</p>` : ''}
+        ${c.alts.length ? `<div class="alts"><span class="lbl">${c.who ? 'Or' : 'Pick'}</span>${
+          c.alts.map((a) => `<button class="chip" type="button" data-pick="${c.id}">${a}</button>`).join('')
+        }</div>` : ''}
+        <div class="acts">
+          ${c.who && !c.pending && c.tier !== 'return'
+            ? `<button class="btn-primary" type="button" data-confirm="${c.id}">Yes, that’s ${c.who.split(' ')[0]}</button>` : ''}
+          ${c.tier === 'return'
+            ? `<button class="btn-primary" type="button" data-confirm="${c.id}">Reverse ${c.who.split(' ')[0]}’s payment</button>` : ''}
+          <button class="btn-quiet" type="button" data-aside="${c.id}">Not dues</button>
+        </div>
+      </article>`).join('');
+
+    el('autoSec').hidden = state.auto.length === 0;
+    el('autoCount').textContent = `${state.auto.length} payment${state.auto.length === 1 ? '' : 's'}`;
+    el('autoList').innerHTML = state.auto.map((p) => `
+      <div class="item">
+        <span class="who">${p.who}</span>
+        <span class="amt-s">${money(p.cents)}</span>
+        <span class="why">${p.why}</span>
+        <button class="btn-quiet" type="button" data-undo="${p.id}">Undo</button>
+      </div>`).join('');
+
+    el('revSec').hidden = state.reversed.length === 0;
+    el('revList').innerHTML = state.reversed.map((r) => `
+      <div class="item rev">
+        <span class="who">${r.who}</span>
+        <span class="amt-s">${money(-r.cents)}</span>
+        <span class="why">${r.why}</span>
+      </div>`).join('');
+
+    const rows = [...state.paid.entries()].filter(([, v]) => v !== 0);
+    el('ledgerSec').hidden = rows.length === 0;
+    el('ledgerCount').textContent = `${rows.length} brother${rows.length === 1 ? '' : 's'} have paid`;
+    el('ledger').innerHTML = rows.map(([name, cents]) => {
+      const bal = DUES - cents;
+      return `<tr><td>${name}</td><td class="num">${money(cents)}</td>
+        <td class="num">${money(bal)}</td>
+        <td>${bal <= 0 ? 'paid' : cents > 0 ? 'partial' : 'unpaid'}</td></tr>`;
+    }).join('');
+
+    const step = STEPS[Math.min(state.day, STEPS.length - 1)];
+    el('stepLabel').textContent = step.label;
+    el('stepNote').textContent = step.note;
+    el('dayHint').textContent = step.hint;
+  }
+
+  function flash(text) {
+    const f = el('flash');
+    f.hidden = false;
+    f.textContent = text;
+  }
+
+  function pay(who, cents) {
+    state.paid.set(who, (state.paid.get(who) ?? 0) + cents);
+  }
+
+  el('sync').addEventListener('click', () => {
+    state.syncedAt = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    if (state.day === 0) {
+      state.queue = DAY1.filter((c) => !c.auto).map((c) => ({ ...c }));
+      DAY1.filter((c) => c.auto).forEach((c) => {
+        state.auto.push({ id: c.id, who: c.who, cents: c.cents, why: `Auto-applied on sync. ${c.why}` });
+        pay(c.who, c.cents);
+      });
+      renderFeed([
+        ...DAY1.map((r) => feedRow(r, r.cents < 0 ? 'ret' : 'kept',
+          r.cents < 0 ? 'kept — a return' : 'money in')),
+        ...DROPPED_DAY1.map((r) => feedRow(r, 'dropped', r.why)),
+      ]);
+      el('feedCount').textContent = `${DAY1.length} kept · ${DROPPED_DAY1.length} dropped`;
+      flash(`8 credits found, 1 applied automatically, 7 waiting for you. 2 debits ignored, `
+        + `1 from another account, 1 from before the term started.`);
+      state.day = 1;
+      render();
+      return;
+    }
+
+    if (state.day === 1) {
+      const pending = state.queue.find((c) => c.pending);
+      if (pending) {
+        pending.pending = false;
+        pending.raw = pending.raw;
+      }
+      renderFeed([
+        feedRow({ date:'2026-10-04', cents:45000, raw:'ZELLE PMT FROM JOSHUA KOCH' }, 'kept',
+          'settled — replaces the pending row'),
+        feedRow({ date:'2026-10-03', cents:45000, raw:'(the pending row, now reported removed)' },
+          'dropped', 'recognised, not erased'),
+      ]);
+      el('feedCount').textContent = '1 settled · 0 new';
+      flash('The pending payment settled. It updated the row already in the queue rather than '
+        + 'adding a second one — still 8 transactions, not 9.');
+      state.day = 2;
+      render();
+      return;
+    }
+
+    if (state.day === 2) {
+      // Reverse a payment that had already been applied.
+      const victim = state.auto[0];
+      if (victim) {
+        state.auto = state.auto.filter((p) => p.id !== victim.id);
+        pay(victim.who, -victim.cents);
+        state.reversed.push({
+          who: victim.who, cents: victim.cents,
+          why: `The bank reported this credit removed. Reversing ${money(victim.cents)} — ${victim.who} is back on the unpaid list.`,
+        });
+      }
+      renderFeed([
+        feedRow({ date:'2026-10-07', cents:-45000, raw:'REMOVED BY BANK — ZELLE PMT FROM SAMUEL M SHORS JR' },
+          'ret', 'reversed automatically'),
+      ]);
+      el('feedCount').textContent = '1 removed · 1 payment reversed';
+      flash('The bank took a credit back. Because it had already been applied, the payment was '
+        + 'reversed on its own — as a negative row, never a deletion.');
+      state.day = 3;
+      render();
+      return;
+    }
+
+    renderFeed([]);
+    el('feedCount').textContent = 'nothing new';
+    flash('Nothing new since the last check. Re-reading the same transactions records nothing — '
+      + 'the ledger has not moved.');
+    render();
+  });
+
+  document.addEventListener('click', (e) => {
+    const confirm = e.target.closest('[data-confirm]');
+    const pick = e.target.closest('[data-pick]');
+    const aside = e.target.closest('[data-aside]');
+    const undo = e.target.closest('[data-undo]');
+
+    if (confirm || pick) {
+      const id = (confirm || pick).dataset.confirm || (confirm || pick).dataset.pick;
+      const c = state.queue.find((x) => x.id === id);
+      if (!c) return;
+      const who = pick ? pick.textContent : c.who;
+      const card = document.querySelector(`[data-card="${id}"]`);
+      if (card) card.classList.add('settling');
+      setTimeout(() => {
+        state.queue = state.queue.filter((x) => x.id !== id);
+        if (c.tier === 'return') {
+          pay(who, c.cents);            // c.cents is negative
+          state.reversed.push({ who, cents: -c.cents, why: c.why });
+        } else {
+          state.auto.push({ id: c.id, who, cents: c.cents, why: `Confirmed by an exec. ${c.why}` });
+          pay(who, c.cents);
+        }
+        render();
+      }, card ? 280 : 0);
+    }
+
+    if (aside) {
+      const id = aside.dataset.aside;
+      const card = document.querySelector(`[data-card="${id}"]`);
+      if (card) card.classList.add('settling');
+      setTimeout(() => {
+        state.queue = state.queue.filter((x) => x.id !== id);
+        render();
+      }, card ? 280 : 0);
+    }
+
+    if (undo) {
+      const id = undo.dataset.undo;
+      const p = state.auto.find((x) => x.id === id);
+      if (!p) return;
+      state.auto = state.auto.filter((x) => x.id !== id);
+      pay(p.who, -p.cents);
+      const original = DAY1.find((c) => c.id === id);
+      if (original) state.queue.unshift({ ...original, pending: false });
+      render();
+    }
+  });
+
+  render();
+})();
+</script>

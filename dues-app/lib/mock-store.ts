@@ -1,11 +1,14 @@
 import { randomUUID } from 'crypto';
 import type {
-  Adjustment, BankTxn, DuesCharge, MemberRow, NameAlias, PaymentRow, Snapshot, Term,
+  Adjustment, BankStatus, BankTxn, DuesCharge, MemberRow, NameAlias, PaymentRow, Snapshot, Term,
 } from './types';
-import type { ApplyCreditInput, DuesBackend, OppFundInput, RecordCreditInput } from './backend';
+import type {
+  ApplyCreditInput, DuesBackend, FeedApplyResult, FeedPageInput, OppFundInput, RecordCreditInput,
+} from './backend';
 import { ROSTER } from './roster';
 import { aliasToLearn } from './match';
 import { buildLedger } from './ledger';
+import { formatCents } from './money';
 import { buildSampleCredits } from './sample';
 
 // In-memory backend, used only when the Supabase env vars are absent (see
@@ -28,8 +31,10 @@ interface MockState {
 
 function createState(): MockState {
   return {
-    members: ROSTER.map((r, i) => ({ id: `m${i + 1}`, name: r.name, aka: [], photoUrl: null })),
-    terms: [{ id: 'term1', label: 'Fall 2026', isCurrent: true, duesCents: null }],
+    members: ROSTER.map((r, i) => ({
+      id: `m${i + 1}`, name: r.name, aka: [], photoUrl: null, financialAid: false,
+    })),
+    terms: [{ id: 'term1', label: 'Fall 2026', isCurrent: true, duesCents: null, autoApply: true }],
     charges: [],
     txns: [],
     payments: [],
@@ -83,6 +88,20 @@ function learn(rawDescription: string, memberId: string) {
   member.aka = [...member.aka, bankName];
 }
 
+// The inverse of learn(): drop the alias this credit taught for this member, and
+// the denormalized copy on the member row.
+function unlearn(rawDescription: string, memberId: string) {
+  const member = state.members.find((m) => m.id === memberId);
+  if (!member) return;
+  const bankName = aliasToLearn(rawDescription, member.name);
+  if (!bankName) return;
+  const key = bankName.toUpperCase();
+  state.aliases = state.aliases.filter(
+    (a) => !(a.memberId === memberId && a.bankName.toUpperCase() === key),
+  );
+  member.aka = member.aka.filter((a) => a.toUpperCase() !== key);
+}
+
 export const mockBackend: DuesBackend = {
   async getSnapshot() {
     return snapshot();
@@ -105,11 +124,14 @@ export const mockBackend: DuesBackend = {
     state.txns.push({
       id: randomUUID(),
       providerTxnId: null,
+      pendingTxnId: null,
+      accountId: null,
       postedOn: input.postedOn,
       amountCents: input.amountCents,
       rawDescription: input.rawDescription.trim(),
       pending: input.pending,
       removedAt: null,
+      amountChangedAt: null,
       source: 'manual',
       status: 'queued',
       enteredBy: ACTOR,
@@ -121,8 +143,16 @@ export const mockBackend: DuesBackend = {
     const term = requireTerm();
     const total = input.allocations.reduce((a, x) => a + x.amountCents, 0);
     if (!input.allocations.length) throw new Error('Pick at least one brother.');
-    if (total !== txn.amountCents) {
-      throw new Error('The split has to add up to the credit exactly.');
+    // Cumulative, not per-call — same as the live backend. A per-call check lets
+    // one credit be applied in full to two different brothers across two calls,
+    // turning $450 of real money into $900 on the ledger.
+    const alreadyApplied = state.payments
+      .filter((p) => p.bankTxnId === txn.id)
+      .reduce((a, p) => a + p.amountCents, 0);
+    if (alreadyApplied + total !== txn.amountCents) {
+      throw new Error(alreadyApplied
+        ? `${formatCents(alreadyApplied)} of this credit is already applied — the rest has to add up to ${formatCents(txn.amountCents - alreadyApplied)}.`
+        : 'The split has to add up to the credit exactly.');
     }
     const ids = input.allocations.map((a) => a.memberId);
     if (new Set(ids).size !== ids.length) throw new Error('Pick two different brothers.');
@@ -137,6 +167,7 @@ export const mockBackend: DuesBackend = {
         id: randomUUID(),
         bankTxnId: txn.id,
         memberId: a.memberId,
+        termId: term.id,
         chargeId: chargeIdFor(a.memberId, term.id),
         amountCents: a.amountCents,
         appliedBy: ACTOR,
@@ -160,6 +191,7 @@ export const mockBackend: DuesBackend = {
       id: randomUUID(),
       bankTxnId: txn.id,
       memberId,
+      termId: term.id,
       chargeId: chargeIdFor(memberId, term.id),
       amountCents: txn.amountCents,   // negative: un-credits without deleting history
       appliedBy: ACTOR,
@@ -172,17 +204,48 @@ export const mockBackend: DuesBackend = {
   async undoPayment(paymentId: string) {
     const payment = state.payments.find((p) => p.id === paymentId);
     if (!payment) throw new Error('That payment no longer exists.');
-    state.payments = state.payments.filter((p) => p.id !== paymentId);
-    const siblings = state.payments.filter((p) => p.bankTxnId === payment.bankTxnId);
-    if (!siblings.length) {
-      const txn = state.txns.find((t) => t.id === payment.bankTxnId);
-      if (txn) txn.status = 'queued';
+    const txn = state.txns.find((t) => t.id === payment.bankTxnId);
+    if (txn?.removedAt) {
+      throw new Error('The bank took this credit back — its reversal is already recorded.');
     }
+    state.payments = state.payments.filter((p) => p.id !== paymentId);
+
+    // Unlearn what applying this credit taught. Without this, undoing a wrong
+    // match leaves the alias behind and every later credit from that sender
+    // matches the wrong brother at full confidence.
+    if (txn) unlearn(txn.rawDescription, payment.memberId);
+
+    // Requeue whenever the credit is no longer fully accounted for — not only
+    // when the last payment is gone. Undoing one half of a split otherwise
+    // strands the other half on no ledger and in no queue.
+    const applied = state.payments
+      .filter((p) => p.bankTxnId === payment.bankTxnId)
+      .reduce((a, p) => a + p.amountCents, 0);
+    if (txn && applied !== txn.amountCents) txn.status = 'queued';
   },
 
   async setTermDues(amountCents: number) {
     if (amountCents <= 0) throw new Error('Dues must be more than zero.');
     requireTerm().duesCents = amountCents;
+  },
+
+  async createTerm(label: string, duesCents: number | null) {
+    if (!label.trim()) throw new Error('Give the term a name, like "Winter 2027".');
+    if (state.terms.some((t) => t.label.toLowerCase() === label.trim().toLowerCase())) {
+      throw new Error(`There is already a term called "${label.trim()}".`);
+    }
+    // Only one term is ever current — mirrors the terms_one_current index.
+    state.terms.forEach((t) => { t.isCurrent = false; });
+    state.terms.unshift({
+      id: randomUUID(), label: label.trim(), isCurrent: true, duesCents, autoApply: true,
+    });
+  },
+
+  async setFinancialAid(memberIds: string[], enabled: boolean) {
+    const wanted = new Set(memberIds);
+    state.members.forEach((m) => {
+      if (wanted.has(m.id)) m.financialAid = enabled;
+    });
   },
 
   async issueCharges() {
@@ -220,6 +283,165 @@ export const mockBackend: DuesBackend = {
     state.adjustments = state.adjustments.filter((a) => a.id !== adjustmentId);
   },
 
+  async applyFeedPage(input: FeedPageInput): Promise<FeedApplyResult> {
+    const term = requireTerm();
+    const insertedTxnIds: string[] = [];
+    const settledTxnIds: string[] = [];
+    let modifiedCount = 0;
+    let removedCount = 0;
+    let reversedCount = 0;
+    let ignoredRemovedCount = 0;
+
+    // ---- added: promotions first, then genuinely new rows ----
+    input.added.forEach((f) => {
+      if (f.amountCents === 0) throw new Error('The feed produced a zero-amount credit.');
+
+      // A posted transaction naming the pending one it replaces. Update in place:
+      // the row keeps its id, so a payment an exec already applied to the pending
+      // credit stays attached and the money is counted once. Inserting a second
+      // row here is the single easiest way to double-count a dues payment.
+      const promoted = f.pendingTxnId
+        ? state.txns.find((t) => t.providerTxnId === f.pendingTxnId)
+        : undefined;
+      if (promoted) {
+        if (promoted.status === 'applied' && promoted.amountCents !== f.amountCents) {
+          promoted.amountChangedAt = new Date().toISOString();
+        }
+        promoted.pendingTxnId = f.pendingTxnId;
+        promoted.providerTxnId = f.providerTxnId;
+        promoted.postedOn = f.postedOn;
+        promoted.amountCents = f.amountCents;
+        promoted.rawDescription = f.rawDescription;
+        promoted.pending = false;
+        settledTxnIds.push(promoted.id);
+        return;
+      }
+
+      // Re-syncing an overlapping window is normal; the provider id is unique.
+      if (state.txns.some((t) => t.providerTxnId === f.providerTxnId)) return;
+
+      const id = randomUUID();
+      state.txns.push({
+        id,
+        providerTxnId: f.providerTxnId,
+        pendingTxnId: f.pendingTxnId,
+        accountId: f.accountId,
+        postedOn: f.postedOn,
+        amountCents: f.amountCents,
+        rawDescription: f.rawDescription,
+        pending: f.pending,
+        removedAt: null,
+        amountChangedAt: null,
+        source: 'plaid',
+        status: 'queued',
+        enteredBy: input.actor,
+      });
+      insertedTxnIds.push(id);
+    });
+
+    // ---- modified: never touch status, id, or who entered it ----
+    input.modified.forEach((f) => {
+      const row = state.txns.find((t) => t.providerTxnId === f.providerTxnId);
+      if (!row) return;   // dropped as a debit, wrong account, or before the floor
+      // An amount that changes after the credit was applied breaks the invariant
+      // applyCredit enforces (allocations sum exactly to the credit). Flag it for
+      // a human rather than letting the ledger drift silently.
+      if (row.status === 'applied' && row.amountCents !== f.amountCents) {
+        row.amountChangedAt = new Date().toISOString();
+      }
+      row.postedOn = f.postedOn;
+      row.amountCents = f.amountCents;
+      row.rawDescription = f.rawDescription;
+      row.pending = f.pending;
+      modifiedCount++;
+    });
+
+    // ---- removed: the bank says it never happened ----
+    input.removed.forEach((providerTxnId) => {
+      // A pending row we already promoted. Its removal is bookkeeping, not a
+      // reversal — checked FIRST, or promotion would immediately be undone.
+      if (state.txns.some((t) => t.pendingTxnId === providerTxnId
+        && t.providerTxnId !== providerTxnId)) {
+        ignoredRemovedCount++;
+        return;
+      }
+      const row = state.txns.find((t) => t.providerTxnId === providerTxnId);
+      if (!row) { ignoredRemovedCount++; return; }
+
+      removedCount++;
+      row.removedAt = new Date().toISOString();
+
+      // Branch on whether money was applied, NOT on status: a partially-undone
+      // split sits at 'queued' with a live payment still on it.
+      const applied0 = state.payments.filter((p) => p.bankTxnId === row.id);
+      if (!applied0.length) { row.status = 'set_aside'; return; }
+
+      // Reversal needs its own transaction to hang off: payments are unique on
+      // (bank_txn_id, member_id), so a negative row cannot sit beside the
+      // positive one it reverses. Mirror the credit, then mirror each payment —
+      // per payment, so a credit split across two brothers reverses both halves.
+      const applied = applied0;
+      const mirrorId = randomUUID();
+      state.txns.push({
+        id: mirrorId,
+        providerTxnId: `${providerTxnId}:removed`,
+        pendingTxnId: null,
+        accountId: row.accountId,
+        postedOn: new Date().toISOString().slice(0, 10),
+        amountCents: -applied.reduce((a, p) => a + p.amountCents, 0),
+        rawDescription: `REMOVED BY BANK — ${row.rawDescription}`,
+        pending: false,
+        removedAt: new Date().toISOString(),
+        amountChangedAt: null,
+        source: 'plaid',
+        status: 'applied',      // never enters the queue
+        enteredBy: input.actor,
+      });
+      applied.forEach((p) => {
+        state.payments.push({
+          id: randomUUID(),
+          bankTxnId: mirrorId,
+          memberId: p.memberId,
+          // The term the money was applied to, not whatever term is current.
+          termId: p.termId,
+          chargeId: p.chargeId,
+          amountCents: -p.amountCents,
+          appliedBy: input.actor,
+          reason: `The bank reported this credit removed. Reversing ${formatCents(p.amountCents)}.`,
+          createdAt: new Date().toISOString(),
+        });
+        reversedCount++;
+      });
+    });
+
+    return {
+      insertedTxnIds, settledTxnIds, modifiedCount, removedCount, reversedCount,
+      ignoredRemovedCount,
+    };
+  },
+
+  async getBankStatus(): Promise<BankStatus> {
+    // Reads the mock sync store rather than a copy, so /bank shows what the
+    // harness and the dev server actually did.
+    const { mockSyncState } = await import('./bank/mock-sync-store');
+    return {
+      connected: mockSyncState.connected,
+      institutionName: 'Stanford Federal Credit Union (mock)',
+      accountName: 'Chapter Checking',
+      accountMask: '1234',
+      accountSelected: Boolean(mockSyncState.accountId),
+      connectedAt: '2026-10-01T00:00:00.000Z',
+      lastSyncedAt: mockSyncState.lastSyncedAt,
+      needsReauth: mockSyncState.needsReauth,
+      lastError: mockSyncState.lastError,
+      runs: mockSyncState.runs.slice(0, 10),
+    };
+  },
+
+  async setAutoApply(enabled: boolean) {
+    requireTerm().autoApply = enabled;
+  },
+
   async loadSampleCredits() {
     const term = requireTerm();
     if (!term.duesCents) term.duesCents = 45000;
@@ -235,6 +457,7 @@ export const mockBackend: DuesBackend = {
         id: randomUUID(),
         bankTxnId: 'seed',
         memberId: sample.returnedMemberId,
+        termId: term.id,
         chargeId: chargeIdFor(sample.returnedMemberId, term.id),
         amountCents: term.duesCents,
         appliedBy: ACTOR,
@@ -247,11 +470,14 @@ export const mockBackend: DuesBackend = {
       state.txns.push({
         id: randomUUID(),
         providerTxnId: null,
+        pendingTxnId: null,
+        accountId: null,
         postedOn: c.postedOn,
         amountCents: c.amountCents,
         rawDescription: c.rawDescription,
         pending: c.pending,
         removedAt: null,
+        amountChangedAt: null,
         source: 'manual',
         status: 'queued',
         enteredBy: 'Walkthrough',

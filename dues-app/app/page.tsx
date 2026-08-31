@@ -4,24 +4,40 @@ import { db, isMockBackend } from '@/lib/db';
 import { buildDesk } from '@/lib/ledger';
 import { formatCents } from '@/lib/money';
 import { loadSampleAction, recordCreditAction } from './actions';
+import { syncNowAction } from './bank/actions';
 
 
 const STATUS_LABEL: Record<string, string> = {
   paid: 'Paid', partial: 'Partial', unpaid: 'Unpaid', unbilled: 'Not charged',
 };
 
+export const maxDuration = 60;
+
 export default async function DeskPage({
   searchParams,
 }: {
   searchParams: { error?: string; ok?: string };
 }) {
-  const snap = await db.getSnapshot();
+  const [snap, bank] = await Promise.all([db.getSnapshot(), db.getBankStatus()]);
   const { rows, queue, summary } = buildDesk(snap);
+  const memberName = (id: string) => snap.members.find((m) => m.id === id)?.name ?? 'unknown';
+  // Everything the sync did without asking, surfaced where an exec will actually
+  // see it. A reversal that happens at 7am, or a payment recorded automatically,
+  // is not an audit trail if you have to go looking for it.
+  const autoApplied = snap.payments
+    .filter((p) => p.reason.startsWith('Auto-applied'))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, 8);
+  const bankRemoved = snap.txns.filter((t) => t.removedAt && t.amountCents < 0);
+  const amountChanged = snap.txns.filter((t) => t.amountChangedAt);
   const duesCents = snap.term?.duesCents ?? null;
   const collectedPct = summary.chargedCents
     ? Math.round((summary.collectedCents / (summary.chargedCents - summary.oppFundCents || 1)) * 100)
     : 0;
-  const stillOwe = rows.filter((r) => r.balanceCents > 0).length;
+  // Who to actually chase. Brothers on financial aid still owe and still count
+  // in the outstanding total — they are just not the treasurer's problem to
+  // pursue, so they are named rather than hidden.
+  const stillOwe = summary.followUpCount;
   const learned = snap.aliases;
   const today = new Date().toISOString().slice(0, 10);
 
@@ -58,7 +74,10 @@ export default async function DeskPage({
         <div className="tile">
           <span className="k">Outstanding</span>
           <span className="v">{formatCents(summary.outstandingCents)}</span>
-          <span className="n">{stillOwe} of {summary.memberCount} brothers still owe</span>
+          <span className="n">
+            {stillOwe} to follow up
+            {summary.aidCount ? ` · ${summary.aidCount} on financial aid` : ''}
+          </span>
         </div>
         <div className="tile attn">
           <span className="k">Needs review</span>
@@ -79,10 +98,87 @@ export default async function DeskPage({
         </p>
       )}
 
+      {bank.needsReauth && (
+        <p className="err">
+          The bank needs you to sign in again, so no new payments are arriving.{' '}
+          <a href="/bank">Reconnect it</a>.
+        </p>
+      )}
+
+      {bankRemoved.length > 0 && (
+        <section className="sec">
+          <div className="sec-head">
+            <h2>Taken back by the bank</h2>
+            <span className="count">{bankRemoved.length}</span>
+            <span className="hint">reversed automatically — the bank says these never happened</span>
+          </div>
+          <div className="applied">
+            {bankRemoved.map((t) => (
+              <div className="item" key={t.id}>
+                <span className="amt-s">{formatCents(t.amountCents)}</span>
+                <span className="why">
+                  {t.rawDescription}
+                  {' — '}
+                  {snap.payments.filter((p) => p.bankTxnId === t.id)
+                    .map((p) => `${memberName(p.memberId)} is back on the unpaid list`)
+                    .join(', ') || 'nothing had been applied to it'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {amountChanged.length > 0 && (
+        <p className="err">
+          The bank changed the amount on {amountChanged.length} credit
+          {amountChanged.length === 1 ? '' : 's'} after it was already applied. Undo the
+          payment under <a href="/settings">Term &amp; charges</a> and re-apply it.
+        </p>
+      )}
+
+      {autoApplied.length > 0 && (
+        <section className="sec">
+          <div className="sec-head">
+            <h2>Applied without asking you</h2>
+            <span className="count">{autoApplied.length}</span>
+            <span className="hint">undo any of these under Term &amp; charges</span>
+          </div>
+          <div className="applied">
+            {autoApplied.map((p) => (
+              <div className="item" key={p.id}>
+                <span className="who">{memberName(p.memberId)}</span>
+                <span className="amt-s">{formatCents(p.amountCents)}</span>
+                <span className="why">{p.reason}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="sec">
         <div className="sec-head">
-          <h2>Record a credit</h2>
-          <span className="hint">phase one — typed from the bank app by hand</span>
+          <h2>Check the bank</h2>
+          <span className="hint">
+            {bank.lastSyncedAt
+              ? `last checked ${new Date(bank.lastSyncedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`
+              : 'not checked yet'}
+          </span>
+        </div>
+        <form action={syncNowAction} className="panel">
+          <div className="formrow">
+            <button className="btn-primary" type="submit">Check for new payments</button>
+            <span className="note" style={{ margin: 0 }}>
+              Runs on its own each morning. Debits never reach the database.
+            </span>
+          </div>
+        </form>
+      </section>
+
+      <section className="sec">
+        <div className="sec-head">
+          <h2>Record a credit by hand</h2>
+          <span className="hint">the escape hatch — normally the bank check does this</span>
         </div>
         <form action={recordCreditAction} className="panel">
           <div className="formrow">
@@ -174,6 +270,9 @@ export default async function DeskPage({
                   <td className="num">{r.balanceCents <= 0 ? '—' : formatCents(r.balanceCents)}</td>
                   <td>
                     <span className={`tag ${r.status}`}>{STATUS_LABEL[r.status]}</span>
+                    {r.financialAid && (
+                      <span className="tag aid" title="Not chased for payment">Financial aid</span>
+                    )}
                   </td>
                 </tr>
               ))}

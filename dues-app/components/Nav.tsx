@@ -2,6 +2,7 @@ import { signOut } from '@/app/login/actions';
 
 const TABS = [
   { href: '/', label: 'Desk' },
+  { href: '/bank', label: 'Bank' },
   { href: '/settings', label: 'Term & charges' },
   { href: '/balances', label: 'Member view' },
 ];

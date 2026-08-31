@@ -2,7 +2,8 @@
 // interface, so swapping the in-memory store for Supabase (and later, adding a
 // Plaid-fed writer) touches one file and no pages.
 
-import type { PublicBalance, Snapshot } from './types';
+import type { BankStatus, PublicBalance, Snapshot } from './types';
+import type { FeedTxn } from './bank/types';
 
 export interface RecordCreditInput {
   rawDescription: string;
@@ -30,6 +31,30 @@ export interface OppFundInput {
   reason: string;
 }
 
+// One page of the bank feed, already filtered to things that belong in a dues
+// ledger. Applying it is a single backend call on purpose: promotion, insertion,
+// modification and reversal all move money, and they should live in exactly one
+// place rather than being composed by a caller who might get the order wrong.
+export interface FeedPageInput {
+  added: FeedTxn[];
+  modified: FeedTxn[];
+  /** Provider txn ids the bank says never happened. */
+  removed: string[];
+  actor: string;
+}
+
+export interface FeedApplyResult {
+  /** Rows genuinely inserted — what auto-apply may consider. */
+  insertedTxnIds: string[];
+  /** Rows promoted from pending to posted — also newly eligible for auto-apply. */
+  settledTxnIds: string[];
+  modifiedCount: number;
+  removedCount: number;
+  reversedCount: number;
+  /** `removed` ids that were already-promoted pending rows: correctly no-ops. */
+  ignoredRemovedCount: number;
+}
+
 export interface DuesBackend {
   getSnapshot(): Promise<Snapshot>;
   /** The login-free member view. Never exposes bank descriptors. */
@@ -42,10 +67,37 @@ export interface DuesBackend {
   /** Undo an applied payment — the txn goes back to the queue. */
   undoPayment(paymentId: string): Promise<void>;
   setTermDues(amountCents: number): Promise<void>;
+  /**
+   * Start a new term and make it current. Rolling over does not touch money:
+   * balances are per term, the old term's ledger stays intact and readable, and
+   * the bank connection, learned aliases and financial-aid flags carry over
+   * because they belong to the chapter rather than to a term.
+   */
+  createTerm(label: string, duesCents: number | null): Promise<void>;
+  /**
+   * Mark brothers as being on financial aid — a flag and nothing more. It keeps
+   * them off the follow-up list so nobody chases someone the chapter already
+   * knows about. It does NOT change what they are charged or what they owe;
+   * reducing that is a deliberate, separate act (grantOppFund), so "collected"
+   * keeps meaning money that actually arrived.
+   */
+  setFinancialAid(memberIds: string[], enabled: boolean): Promise<void>;
   /** Charge every member who has no charge yet this term. Returns how many. */
   issueCharges(): Promise<number>;
   grantOppFund(input: OppFundInput): Promise<void>;
   removeAdjustment(adjustmentId: string): Promise<void>;
+  /* ---- the bank feed ---- */
+  /**
+   * Apply one page, in the order added → modified → removed. The order is not
+   * cosmetic: the bank routinely reports a pending transaction as removed in the
+   * same page that carries its posted replacement, so removing first would tear
+   * down the row the promotion is about to reuse.
+   */
+  applyFeedPage(input: FeedPageInput): Promise<FeedApplyResult>;
+  /** The redacted connection view. Never exposes the access token or the cursor. */
+  getBankStatus(): Promise<BankStatus>;
+  setAutoApply(enabled: boolean): Promise<void>;
+
   /** Seed the walkthrough credits from dues-desk.html. Mock backend only. */
   loadSampleCredits?(): Promise<void>;
 }

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
+import { resolveNames } from '@/lib/aid';
 import { parseAmountToCents } from '@/lib/money';
 
 async function run(fn: () => Promise<string>) {
@@ -62,4 +63,48 @@ export async function undoPaymentAction(formData: FormData) {
     await db.undoPayment(id);
     return 'Payment undone — the credit is back in the queue.';
   });
+}
+
+export async function createTermAction(formData: FormData) {
+  const label = str(formData, 'label');
+  const raw = str(formData, 'dues');
+  const cents = raw ? parseAmountToCents(raw) : null;
+  await run(async () => {
+    if (raw && cents === null) throw new Error('Dues has to be a number, like 450.');
+    await db.createTerm(label, cents);
+    return `${label} is now the current term. Charge the roster when you're ready.`;
+  });
+}
+
+// Step one of the financial-aid import: resolve the pasted names and hand the
+// result back to the page. Nothing is written here — flagging the wrong brother
+// means he quietly stops being asked to pay, and nobody notices a follow-up list
+// that is too short, so the exec sees the matches before they take effect.
+export async function matchAidNamesAction(formData: FormData) {
+  const text = String(formData.get('names') ?? '');
+  if (!text.trim()) redirect('/settings?error=' + encodeURIComponent('Paste some names first.'));
+  redirect(`/settings?aid=${encodeURIComponent(text.slice(0, 8000))}`);
+}
+
+export async function applyAidAction(formData: FormData) {
+  const ids = formData.getAll('memberId').map((v) => String(v)).filter(Boolean);
+  await run(async () => {
+    if (!ids.length) throw new Error('Nothing was selected.');
+    await db.setFinancialAid(ids, true);
+    return `${ids.length} ${ids.length === 1 ? 'brother is' : 'brothers are'} marked as on financial aid.`;
+  });
+}
+
+export async function clearAidAction(formData: FormData) {
+  const memberId = str(formData, 'memberId');
+  await run(async () => {
+    await db.setFinancialAid([memberId], false);
+    return 'Removed from the financial aid list.';
+  });
+}
+
+/** Used by the page to render the confirmation step. Pure — writes nothing. */
+export async function previewAidNames(text: string) {
+  const snap = await db.getSnapshot();
+  return resolveNames(text, snap.members);
 }

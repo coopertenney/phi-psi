@@ -4,8 +4,8 @@
 
 export type MatchTier = 'clear' | 'check' | 'unclear' | 'return';
 
-// Where a credit came from. Phase 1 is 'manual' only (an exec reading the bank
-// app and typing what they see); phase 2 adds 'plaid' rows from the feed.
+// Where a credit came from. 'manual' is an exec reading the bank app and typing
+// what they see; 'plaid' is a row off the live bank feed.
 export type TxnSource = 'manual' | 'plaid';
 
 // A credit's lifecycle. 'queued' is the review queue; 'applied' means at least
@@ -21,6 +21,14 @@ export interface MemberRow {
   name: string;
   aka: string[];        // learned bank-name variants, denormalized from name_aliases
   photoUrl: string | null;
+  /**
+   * On financial aid. Deliberately a flag and nothing more: the charge stands,
+   * the balance stands, the money math is untouched. All it does is keep them
+   * off the follow-up list, so nobody chases a brother the chapter already knows
+   * about. Reducing what they owe is a separate, deliberate act — an opportunity
+   * fund grant — so "collected" never quietly changes meaning.
+   */
+  financialAid: boolean;
 }
 
 export interface Term {
@@ -28,6 +36,11 @@ export interface Term {
   label: string;
   isCurrent: boolean;
   duesCents: number | null;   // null until an exec sets the term's dues amount
+  // Whether the sync may apply its own certain matches. Per-term because that's
+  // the right granularity for widening it after watching a term of real data,
+  // and persisted because cron runs with nobody watching — it used to be a
+  // checkbox on a screen an exec was standing in front of.
+  autoApply: boolean;
 }
 
 export interface DuesCharge {
@@ -45,7 +58,13 @@ export interface BankTxn {
   amountCents: number;           // negative for a returned/reversed payment
   rawDescription: string;        // the descriptor exactly as the bank sent it
   pending: boolean;              // provisional — seen, not settled
+  /** Set on a posted row: the pending txn id it replaced, so the feed's later
+   *  `removed` for that pending id is recognized as a promotion, not an erasure. */
+  pendingTxnId: string | null;
+  accountId: string | null;
   removedAt: string | null;      // the feed reported this txn removed
+  /** The feed changed this credit's amount after it had already been applied. */
+  amountChangedAt: string | null;
   source: TxnSource;
   status: TxnStatus;
   enteredBy: string;
@@ -55,6 +74,10 @@ export interface PaymentRow {
   id: string;
   bankTxnId: string;
   memberId: string;
+  // Which term this money paid. Charges are term-scoped, so payments must be
+  // too — without it, last term's payments settle this term's charges and the
+  // whole chapter reads "paid" the day a new term becomes current.
+  termId: string;
   chargeId: string | null;
   amountCents: number;
   appliedBy: string;
@@ -102,17 +125,41 @@ export interface QueueItem {
   partial: boolean;            // amount is short of the guess's outstanding balance
   split: boolean;              // exact multiple of dues — likely covers 2+ brothers
   tied: boolean;               // top candidates are indistinguishable; refuse to guess
+  /**
+   * The NAME is beyond doubt — one brother, no tie, no relative, no suffix, and
+   * the runner-up is nowhere close. Deliberately separate from the tier, which
+   * also weighs the amount: a partial payment from an unmistakable sender has a
+   * certain name and an unusual amount, and those two facts deserve separate
+   * answers. lib/autoapply.ts decides what to do with money; this decides only
+   * whether we know whose money it is.
+   */
+  nameCertain: boolean;
+  /** No sender name in the descriptor at all. */
+  noSender: boolean;
+  /**
+   * The descriptor isn't a person-to-person transfer at all — a check deposit,
+   * interest, a fee, a wire reference. Nobody sent this, so nobody can be
+   * matched to it, however the roster is searched.
+   */
+  notAPerson: boolean;
+  /** The credit is larger than the guess's outstanding balance. */
+  overpay: boolean;
 }
 
 export interface LedgerRow {
   memberId: string;
   name: string;
   aka: string[];
+  financialAid: boolean;
   chargedCents: number;
   oppFundCents: number;
   paidCents: number;
   owedCents: number;       // charged − opp fund
-  balanceCents: number;    // owed − paid
+  /** Never negative: money past what was owed is reported as overpaid, not as a
+   *  negative balance, so "balance" always reads as "what is still owed". */
+  balanceCents: number;
+  /** Paid past the balance. A flag, not a credit against next term. */
+  overpaidCents: number;
   status: LedgerStatus;
 }
 
@@ -137,6 +184,9 @@ export interface DeskSummary {
   settledCount: number;
   queueCount: number;
   setAsideCount: number;
+  /** Brothers who owe and aren't on financial aid — the actual follow-up list. */
+  followUpCount: number;
+  aidCount: number;
 }
 
 // One read of everything the desk renders. The whole chapter is ~105 members
@@ -154,4 +204,38 @@ export interface Snapshot {
   aliases: NameAlias[];
   /** Who's signed in, for audit fields. 'Exec (mock)' when there's no backend. */
   actor: string;
+}
+
+/* ─────────────────────────── the bank connection ─────────────────────────── */
+
+// What an exec is allowed to know about the bank link. Contains no access token
+// and no cursor: those live in `sync_state`, which only the service role reads.
+export interface BankStatus {
+  connected: boolean;
+  institutionName: string | null;
+  accountName: string | null;
+  accountMask: string | null;
+  accountSelected: boolean;
+  connectedAt: string | null;
+  lastSyncedAt: string | null;
+  needsReauth: boolean;
+  lastError: string | null;
+  /** Recent syncs, newest first — the answer to "did it run, and what did it do?" */
+  runs: SyncRunRow[];
+}
+
+export interface SyncRunRow {
+  id: string;
+  trigger: string;
+  startedAt: string;
+  finishedAt: string | null;
+  addedCount: number;
+  settledCount: number;
+  modifiedCount: number;
+  removedCount: number;
+  reversedCount: number;
+  droppedDebitCount: number;
+  autoAppliedCount: number;
+  status: string;
+  error: string | null;
 }

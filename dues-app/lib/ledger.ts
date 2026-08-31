@@ -26,23 +26,33 @@ export function buildLedger(snap: Snapshot): LedgerRow[] {
 
   // Payments carry their own sign: a reversal is a negative payment row, so
   // summing them un-credits a returned transaction without deleting history.
+  // Scoped to the term for the same reason charges are: Fall's money must not
+  // pay Spring's charge.
   const paid = new Map<string, number>();
-  snap.payments.forEach((p) => paid.set(p.memberId, (paid.get(p.memberId) ?? 0) + p.amountCents));
+  snap.payments
+    .filter((p) => !termId || p.termId === termId)
+    .forEach((p) => paid.set(p.memberId, (paid.get(p.memberId) ?? 0) + p.amountCents));
 
   return snap.members.map((m) => {
     const chargedCents = charged.get(m.id) ?? 0;
     const oppFundCents = Math.min(oppFund.get(m.id) ?? 0, chargedCents);
     const paidCents = paid.get(m.id) ?? 0;
     const owedCents = chargedCents - oppFundCents;
+    const net = owedCents - paidCents;
     return {
       memberId: m.id,
       name: m.name,
       aka: m.aka,
+      financialAid: m.financialAid,
       chargedCents,
       oppFundCents,
       paidCents,
       owedCents,
-      balanceCents: owedCents - paidCents,
+      // "Balance" always means what is still owed, so it never goes negative.
+      // Money past that is reported separately as overpaid — a flag to look at,
+      // not a credit that quietly reduces next term's bill.
+      balanceCents: Math.max(0, net),
+      overpaidCents: Math.max(0, -net),
       status: statusFor(chargedCents, owedCents, paidCents),
     };
   });
@@ -57,7 +67,7 @@ export function outstandingByMember(rows: LedgerRow[]): Record<string, number> {
 export function buildQueue(snap: Snapshot, rows: LedgerRow[]): QueueItem[] {
   const outstanding = outstandingByMember(rows);
   return snap.txns
-    .filter((t) => t.status === 'queued')
+    .filter((t) => t.status === 'queued' && !t.removedAt)
     .sort((a, b) => (a.postedOn === b.postedOn ? a.id.localeCompare(b.id) : a.postedOn < b.postedOn ? -1 : 1))
     .map((txn) => rankCredit({
       txn,
@@ -75,6 +85,9 @@ export function buildSummary(snap: Snapshot, rows: LedgerRow[], queue: QueueItem
   const outstandingCents = rows.reduce((a, r) => a + Math.max(0, r.balanceCents), 0);
   // Members with nothing charged aren't "settled" — they're just not billed yet.
   const settledCount = rows.filter((r) => r.owedCents > 0 && r.balanceCents <= 0).length;
+  // Who to actually chase: owes money and isn't already known to be on aid.
+  const followUpCount = rows.filter((r) => r.balanceCents > 0 && !r.financialAid).length;
+  const aidCount = rows.filter((r) => r.financialAid).length;
   return {
     collectedCents,
     chargedCents,
@@ -84,6 +97,8 @@ export function buildSummary(snap: Snapshot, rows: LedgerRow[], queue: QueueItem
     settledCount,
     queueCount: queue.length,
     setAsideCount: snap.txns.filter((t) => t.status === 'set_aside').length,
+    followUpCount,
+    aidCount,
   };
 }
 
