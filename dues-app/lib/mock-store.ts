@@ -6,6 +6,8 @@ import type {
 import type {
   ApplyCreditInput, DuesBackend, FeedApplyResult, FeedPageInput, OppFundInput, RecordCreditInput,
 } from './backend';
+import { buildRosterPlan, type RosterCsvRow } from './roster-csv';
+import type { RosterImportResult } from './backend';
 import { ROSTER } from './roster';
 import { aliasToLearn } from './match';
 import { buildLedger } from './ledger';
@@ -38,6 +40,7 @@ function createState(): MockState {
     })),
     terms: [{
       id: 'term1', label: 'Fall 2026', startsOn: '2026-09-22',
+      createdAt: '2026-09-01T00:00:00.000Z',
       isCurrent: true, duesCents: null, autoApply: true,
     }],
     charges: [],
@@ -169,13 +172,27 @@ export const mockBackend: DuesBackend = {
       throw new Error('That credit is already applied to this brother.');
     }
 
+    // One row per brother, stamped with the term the money was RECORDED in — not
+    // the term it settles. Which term(s) it pays is derived in lib/ledger.ts,
+    // oldest unpaid first, so a Fall payment arriving in January pays Fall.
+    //
+    // Resolving that here instead was the alternative, and it does not fit: a
+    // credit large enough to cover two terms would need two payment rows for one
+    // brother, and `unique (bank_txn_id, member_id)` forbids exactly that — for
+    // good reason, since it is the constraint that stops one credit being applied
+    // to the same brother twice. Deriving keeps one raw row per brother per
+    // credit, and lets `undoPayment` and the bank's `removed` reversal stay
+    // correct by simply changing what is in the pool.
+    //
+    // charge_id is left null for the same reason: a payment can span two terms'
+    // charges, so it cannot honestly point at one.
     input.allocations.forEach((a) => {
       state.payments.push({
         id: randomUUID(),
         bankTxnId: txn.id,
         memberId: a.memberId,
         termId: term.id,
-        chargeId: chargeIdFor(a.memberId, term.id),
+        chargeId: null,
         amountCents: a.amountCents,
         appliedBy: ACTOR,
         reason: input.reason,
@@ -199,8 +216,12 @@ export const mockBackend: DuesBackend = {
       bankTxnId: txn.id,
       memberId,
       termId: term.id,
-      chargeId: chargeIdFor(memberId, term.id),
-      amountCents: txn.amountCents,   // negative: un-credits without deleting history
+      chargeId: null,
+      // Negative: un-credits without deleting history. Which term loses the money
+      // is derived — the waterfall drains the most recently filled term first, so
+      // taking $537 back off a brother who owed Fall and Winter leaves him owing
+      // exactly one term again, whichever one the money had filled.
+      amountCents: txn.amountCents,
       appliedBy: ACTOR,
       reason: `Reversal of a returned credit (${txn.rawDescription}).`,
       createdAt: new Date().toISOString(),
@@ -244,7 +265,8 @@ export const mockBackend: DuesBackend = {
     // Only one term is ever current — mirrors the terms_one_current index.
     state.terms.forEach((t) => { t.isCurrent = false; });
     state.terms.unshift({
-      id: randomUUID(), label: label.trim(), startsOn, isCurrent: true, duesCents, autoApply: true,
+      id: randomUUID(), label: label.trim(), startsOn, createdAt: new Date().toISOString(),
+      isCurrent: true, duesCents, autoApply: true,
     });
   },
 
@@ -255,6 +277,44 @@ export const mockBackend: DuesBackend = {
     });
   },
 
+  async importRoster(rows: RosterCsvRow[], mode: 'replace' | 'pledges'): Promise<RosterImportResult> {
+    const plan = buildRosterPlan(rows, state.members, mode);
+
+    // Everyone on the file who is already here keeps his id — and therefore his
+    // payments, his charges and every sender name an exec has confirmed for him.
+    plan.aidChanges.forEach((c) => {
+      const m = state.members.find((x) => x.id === c.member.id);
+      if (m) m.financialAid = c.financialAid;
+    });
+
+    plan.added.forEach((row) => {
+      state.members.push({
+        id: randomUUID(), name: row.name, aka: [], photoUrl: null,
+        financialAid: row.financialAid,
+      });
+    });
+
+    // A replace deletes. The live schema cascades, so the mock must cascade too
+    // or the two backends disagree about what a replace costs.
+    const removedIds = new Set(plan.removed.map((m) => m.id));
+    if (removedIds.size) {
+      state.members = state.members.filter((m) => !removedIds.has(m.id));
+      state.payments = state.payments.filter((p) => !removedIds.has(p.memberId));
+      state.charges = state.charges.filter((c) => !removedIds.has(c.memberId));
+      state.adjustments = state.adjustments.filter((a) => !removedIds.has(a.memberId));
+      state.exemptions = state.exemptions.filter((e) => !removedIds.has(e.memberId));
+      state.aliases = state.aliases.filter((a) => !removedIds.has(a.memberId));
+    }
+
+    return {
+      keptCount: plan.kept.length,
+      addedCount: plan.added.length,
+      removedCount: plan.removed.length,
+      aidChangedCount: plan.aidChanges.length,
+      removedNames: plan.removed.map((m) => m.name),
+    };
+  },
+
   async setExempt(memberId: string, reason: string) {
     const term = requireTerm();
     if (state.exemptions.some((e) => e.memberId === memberId && e.termId === term.id)) return;
@@ -262,10 +322,17 @@ export const mockBackend: DuesBackend = {
     // An exemption is the absence of a charge, not a waived one — so if he was
     // already charged, that charge comes off. Unless money has landed against
     // it, in which case somebody has to decide what happens to the money.
+    //
+    // "Money has landed" is a DERIVED question now. It used to be
+    // `payments.charge_id === charge.id`, which misses everything that matters
+    // once a payment can span terms: a credit recorded in Fall that spilled into
+    // Winter carries Fall's term id and no charge id at all, and deleting
+    // Winter's charge under it would silently re-route his money to a later term.
     const charge = state.charges.find((c) => c.memberId === memberId && c.termId === term.id);
     if (charge) {
-      const paid = state.payments.some((p) => p.chargeId === charge.id);
-      if (paid) {
+      const row = buildLedger(snapshot()).find((r) => r.memberId === memberId);
+      const landed = row?.terms.find((t) => t.termId === term.id)?.paidCents ?? 0;
+      if (landed > 0) {
         throw new Error(
           'A payment is already applied to this term for him. Undo it first, then mark him abroad.',
         );
@@ -422,24 +489,45 @@ export const mockBackend: DuesBackend = {
       // (bank_txn_id, member_id), so a negative row cannot sit beside the
       // positive one it reverses. Mirror the credit, then mirror each payment —
       // per payment, so a credit split across two brothers reverses both halves.
+      //
+      // The mirror's provider id is deterministic and it is REUSED if it already
+      // exists, exactly as the live backend's upsert does. The positive payments
+      // stay on the original row after a reversal, so a feed that reports the
+      // same removal twice — a replayed page, an overlapping cursor window —
+      // walks straight back into this branch, and creating a second mirror would
+      // reverse the same money again and drive the brother's balance past what
+      // he was ever charged.
       const applied = applied0;
-      const mirrorId = randomUUID();
-      state.txns.push({
-        id: mirrorId,
-        providerTxnId: `${providerTxnId}:removed`,
-        pendingTxnId: null,
-        accountId: row.accountId,
-        postedOn: new Date().toISOString().slice(0, 10),
-        amountCents: -applied.reduce((a, p) => a + p.amountCents, 0),
-        rawDescription: `REMOVED BY BANK — ${row.rawDescription}`,
-        pending: false,
-        removedAt: new Date().toISOString(),
-        amountChangedAt: null,
-        source: 'plaid',
-        status: 'applied',      // never enters the queue
-        enteredBy: input.actor,
-      });
+      const mirrorProviderId = `${providerTxnId}:removed`;
+      const total = -applied.reduce((a, p) => a + p.amountCents, 0);
+      let mirror = state.txns.find((t) => t.providerTxnId === mirrorProviderId);
+      if (mirror) {
+        mirror.amountCents = total;
+      } else {
+        mirror = {
+          id: randomUUID(),
+          providerTxnId: mirrorProviderId,
+          pendingTxnId: null,
+          accountId: row.accountId,
+          postedOn: new Date().toISOString().slice(0, 10),
+          amountCents: total,
+          rawDescription: `REMOVED BY BANK — ${row.rawDescription}`,
+          pending: false,
+          removedAt: new Date().toISOString(),
+          amountChangedAt: null,
+          source: 'plaid',
+          status: 'applied',      // never enters the queue
+          enteredBy: input.actor,
+        };
+        state.txns.push(mirror);
+      }
+      const mirrorId = mirror.id;
       applied.forEach((p) => {
+        // Mirrors the live upsert's `onConflict: 'bank_txn_id,member_id',
+        // ignoreDuplicates: true`: a replayed removal reverses nothing new.
+        if (state.payments.some((x) => x.bankTxnId === mirrorId && x.memberId === p.memberId)) {
+          return;
+        }
         state.payments.push({
           id: randomUUID(),
           bankTxnId: mirrorId,
@@ -500,7 +588,7 @@ export const mockBackend: DuesBackend = {
         bankTxnId: 'seed',
         memberId: sample.returnedMemberId,
         termId: term.id,
-        chargeId: chargeIdFor(sample.returnedMemberId, term.id),
+        chargeId: null,
         amountCents: term.duesCents,
         appliedBy: ACTOR,
         reason: 'Seeded walkthrough payment.',

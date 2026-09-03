@@ -8,7 +8,10 @@
 //   - anything below tier 'clear', which already demands a name the matcher can
 //     place on one brother without hedging and an amount that settles his
 //     balance to the penny
-//   - a tie between two brothers, a partial, an overpay, a likely split
+//   - a tie between two brothers, a likely split
+//   - anything that would leave one of two open terms part-paid: with Fall and
+//     Spring both open at different prices, "which quarter did he mean" is a
+//     judgment, and getting it wrong is invisible
 //   - a return, which reverses money and must always be a human decision
 //   - two clear credits pointing at the same brother in one file: the second
 //     would be applied against a balance the first already settled, so both go
@@ -34,6 +37,13 @@ import type { QueueItem } from './types';
 // still waits.
 export function isAutoApplicable(item: QueueItem): boolean {
   if (!item.nameCertain) return false;
+  // The other half of the question, and the one multiple open terms introduced:
+  // knowing whose money it is settles nothing if the money then lands on the
+  // wrong quarter. `termCertain` (lib/match.ts) is true only when the
+  // oldest-unpaid-first waterfall has no discretion left — he owes on at most
+  // one term, or the amount squares a whole run of terms, or it covers
+  // everything he owes. See below for what that deliberately gave up.
+  if (!item.termCertain) return false;
   if (item.txn.amountCents <= 0) return false;
   if (item.txn.pending) return false;      // provisional money isn't settled money
   if (item.tier === 'return') return false;
@@ -43,10 +53,19 @@ export function isAutoApplicable(item: QueueItem): boolean {
   const owed = item.candidates[0].outstandingCents;
   if (owed <= 0) return false;             // nothing outstanding to settle
 
-  // Three shapes, all unambiguous once the name is certain:
-  //   exact  — settles the balance to the penny
-  //   partial— he paid some of it; his balance is simply lower
-  //   overpay— more than owed, recorded and flagged rather than left in a queue
+  // What survives, all unambiguous once both the name and the term are certain:
+  //   exact   — squares his oldest term, or a whole run of them, to the penny
+  //   spill   — covers everything he owes; the excess is flagged as overpaid and
+  //             credited to no term at all
+  //   partial — only when he has ONE open term, where a short payment has
+  //             nowhere else it could have been meant for
+  //
+  // What this rule gave up, on purpose: a partial payment from an unmistakable
+  // sender who owes two terms used to auto-apply. It no longer does, because
+  // oldest-first would put it on the older quarter and a brother owing Fall $537
+  // and Spring $300 who sends $300 plainly meant Spring. Narrowing auto-apply
+  // costs an exec one click; guessing the quarter wrong is silent, and shows up
+  // a term later as two wrong numbers instead of one.
   return item.txn.amountCents !== 0;
 }
 
@@ -105,11 +124,16 @@ export async function autoApplyClearMatches(
     // against a balance the first already changed.
     if ((perMember.get(member.memberId) ?? 0) > 1) continue;
 
+    // Name the quarter the money landed on. An exec scanning "Applied without
+    // asking you" can only check the app's work if the note says which term.
+    const term = member.oldestTermLabel;
     const note = q.partial
-      ? 'Recorded as a partial payment.'
+      ? `Recorded as a partial payment${term ? ` against ${term}` : ''}.`
       : q.overpay
-        ? 'More than the balance — recorded in full and flagged as overpaid.'
-        : '';
+        ? 'More than everything he owes — every open term settled, the rest flagged as overpaid.'
+        : term
+          ? `Applied to ${term} first, his oldest unpaid term.`
+          : '';
 
     try {
       await backend.applyCredit({

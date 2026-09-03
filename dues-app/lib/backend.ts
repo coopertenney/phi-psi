@@ -3,6 +3,7 @@
 // Plaid-fed writer) touches one file and no pages.
 
 import type { BankStatus, PublicBalance, Snapshot } from './types';
+import type { RosterCsvRow } from './roster-csv';
 import type { FeedTxn } from './bank/types';
 
 export interface RecordCreditInput {
@@ -55,6 +56,15 @@ export interface FeedApplyResult {
   ignoredRemovedCount: number;
 }
 
+export interface RosterImportResult {
+  keptCount: number;
+  addedCount: number;
+  removedCount: number;
+  aidChangedCount: number;
+  /** Names removed, so the confirmation message can be specific. */
+  removedNames: string[];
+}
+
 export interface DuesBackend {
   getSnapshot(): Promise<Snapshot>;
   /** The login-free member view. Never exposes bank descriptors. */
@@ -68,10 +78,16 @@ export interface DuesBackend {
   undoPayment(paymentId: string): Promise<void>;
   setTermDues(amountCents: number): Promise<void>;
   /**
-   * Start a new term and make it current. Rolling over does not touch money:
-   * balances are per term, the old term's ledger stays intact and readable, and
-   * the bank connection, learned aliases and financial-aid flags carry over
-   * because they belong to the chapter rather than to a term.
+   * Start a new term and make it current. Rolling over does not touch money: the
+   * old term's ledger stays intact and readable, and the bank connection, learned
+   * aliases and financial-aid flags carry over because they belong to the chapter
+   * rather than to a term.
+   *
+   * What it also does not do is wipe the slate. Charges are per term, but a
+   * BALANCE is not: an unpaid Fall stays unpaid, and the next credit that brother
+   * sends settles Fall before it touches the new term (lib/ledger.ts). `startsOn`
+   * is what orders the terms, so it is what decides which one is "oldest" — it is
+   * worth typing in.
    */
   createTerm(label: string, duesCents: number | null, startsOn: string | null): Promise<void>;
   /**
@@ -82,6 +98,20 @@ export interface DuesBackend {
    * keeps meaning money that actually arrived.
    */
   setFinancialAid(memberIds: string[], enabled: boolean): Promise<void>;
+  /**
+   * Load a roster from a file.
+   *
+   * 'pledges' is additive and cannot remove anyone. 'replace' treats the file as
+   * the roster: names on it are kept with their history, names missing from it
+   * are DELETED — and deleting a brother takes his payments with him, so the
+   * amount the chapter recorded as collected in past terms changes. That is a
+   * deliberate choice by the chapter; the caller is expected to have shown a
+   * summary of exactly what goes first.
+   *
+   * The plan is recomputed here from the backend's own roster rather than
+   * trusted from the caller.
+   */
+  importRoster(rows: RosterCsvRow[], mode: 'replace' | 'pledges'): Promise<RosterImportResult>;
   /**
    * Mark a brother as abroad this term. Unlike financial aid, this is a real
    * exemption: he is not charged at all, so he owes nothing and appears on no

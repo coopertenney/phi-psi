@@ -38,15 +38,27 @@ export function QueueCard({
   const amount = txn.amountCents;
   const abs = Math.abs(amount);
 
-  // A split only makes sense when the term has a dues amount to divide by.
-  const canSplit = item.split && duesCents !== null && duesCents > 0;
-  const firstShare = canSplit ? duesCents! : abs;
+  // A split only makes sense when there is a term charge to divide by — and it
+  // is the charge the amount actually divided into, which with Fall at $537 and
+  // Spring at $300 is not always the current term's.
+  const share = item.splitShareCents ?? duesCents;
+  const canSplit = item.split && share !== null && share > 0;
+  const firstShare = canSplit ? share! : abs;
 
-  const options = rows.map((r) => (
-    <option key={r.memberId} value={r.memberId}>
-      {r.name} — owes {formatCents(Math.max(0, r.balanceCents))}
-    </option>
-  ));
+  // "Owes" is now everything across every open term. Naming the oldest one too
+  // matters at the moment of choosing: this is the picker where an exec decides
+  // whose money it is, and the app is about to put it on that term.
+  const options = rows.map((r) => {
+    const oldest = r.terms.find((t) => t.termId === r.oldestUnpaidTermId);
+    const spread = oldest && r.balanceCents > oldest.balanceCents
+      ? ` (${formatCents(oldest.balanceCents)} of it ${oldest.termLabel})`
+      : '';
+    return (
+      <option key={r.memberId} value={r.memberId}>
+        {r.name} — owes {formatCents(Math.max(0, r.balanceCents))}{spread}
+      </option>
+    );
+  });
 
   let who: JSX.Element;
   if (tier === 'return' && top) {

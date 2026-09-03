@@ -65,18 +65,26 @@ export default async function DeskPage({
       {searchParams.ok && <p className="ok">{searchParams.ok}</p>}
 
       <section className="summary" aria-live="polite">
+        {/* Collected is THIS TERM — read against this term's charges and as a
+            percentage of them, so it must not start summing across years. */}
         <div className="tile">
-          <span className="k">Collected</span>
+          <span className="k">Collected{snap.term ? ` · ${snap.term.label}` : ''}</span>
           <span className="v">{formatCents(summary.collectedCents)}</span>
           <span className="n">
             {summary.chargedCents ? `${collectedPct}% of ${formatCents(summary.chargedCents - summary.oppFundCents)}` : 'nothing charged yet'}
           </span>
         </div>
+        {/* Outstanding is EVERY TERM — the chapter's actual receivable. Scoping
+            it to the current term is what hid an unpaid Fall all winter. The
+            split below keeps the term figure on the screen rather than
+            replacing it. */}
         <div className="tile">
-          <span className="k">Outstanding</span>
+          <span className="k">Outstanding · all terms</span>
           <span className="v">{formatCents(summary.outstandingCents)}</span>
           <span className="n">
-            {stillOwe} to follow up
+            {summary.priorOutstandingCents > 0
+              ? `${formatCents(summary.outstandingThisTermCents)} this term · ${formatCents(summary.priorOutstandingCents)} from earlier terms`
+              : `${stillOwe} to follow up`}
             {summary.aidCount ? ` · ${summary.aidCount} on financial aid` : ''}
             {summary.exemptCount ? ` · ${summary.exemptCount} abroad` : ''}
           </span>
@@ -241,7 +249,15 @@ export default async function DeskPage({
         <div className="sec-head">
           <h2>Ledger</h2>
           <span className="count">{summary.settledCount} of {summary.memberCount} settled</span>
+          <span className="hint">every open term, not just this one</span>
         </div>
+        {summary.priorOwingCount > 0 && (
+          <p className="note">
+            {summary.priorOwingCount} {summary.priorOwingCount === 1 ? 'brother is' : 'brothers are'}
+            {' '}carrying a balance from an earlier term. A payment settles the oldest unpaid term
+            first and spills forward, so money arriving now goes to the oldest quarter still open.
+          </p>
+        )}
         <div className="tablewrap">
           <table>
             <thead>
@@ -254,30 +270,51 @@ export default async function DeskPage({
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.memberId} className={r.status === 'paid' ? 'settled' : undefined}>
-                  <td className="who">
-                    {r.name}
-                    {r.aka.length > 0 && (
-                      <span className="learned">also matches: {r.aka.join(' · ')}</span>
-                    )}
-                  </td>
-                  <td className="num">
-                    {formatCents(r.owedCents)}
-                    {r.oppFundCents > 0 && (
-                      <span className="learned">opp fund {formatCents(r.oppFundCents)}</span>
-                    )}
-                  </td>
-                  <td className="num">{formatCents(r.paidCents)}</td>
-                  <td className="num">{r.balanceCents <= 0 ? '—' : formatCents(r.balanceCents)}</td>
-                  <td>
-                    <span className={`tag ${r.status}`}>{STATUS_LABEL[r.status]}</span>
-                    {r.financialAid && (
-                      <span className="tag aid" title="Not chased for payment">Financial aid</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r) => {
+                // Only worth breaking out when there is more than one term in
+                // play — otherwise the per-term line just repeats the row.
+                const breakdown = r.terms.length > 1 ? r.terms : [];
+                return (
+                  <tr key={r.memberId} className={r.status === 'paid' ? 'settled' : undefined}>
+                    <td className="who">
+                      {r.name}
+                      {breakdown.length > 0 && (
+                        <span className="learned">
+                          {breakdown.map((t) => `${t.termLabel}: ${
+                            t.status === 'exempt' ? 'abroad'
+                              : t.balanceCents > 0 ? `${formatCents(t.balanceCents)} open` : 'settled'
+                          }`).join(' · ')}
+                        </span>
+                      )}
+                      {r.aka.length > 0 && (
+                        <span className="learned">also matches: {r.aka.join(' · ')}</span>
+                      )}
+                    </td>
+                    <td className="num">
+                      {formatCents(r.owedCents)}
+                      {r.oppFundCents > 0 && (
+                        <span className="learned">opp fund {formatCents(r.oppFundCents)}</span>
+                      )}
+                    </td>
+                    <td className="num">{formatCents(r.paidCents)}</td>
+                    <td className="num">
+                      {r.balanceCents <= 0 ? '—' : formatCents(r.balanceCents)}
+                      {r.overpaidCents > 0 && (
+                        <span className="learned">overpaid {formatCents(r.overpaidCents)}</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`tag ${r.status}`}>{STATUS_LABEL[r.status]}</span>
+                      {r.exempt && r.status !== 'exempt' && (
+                        <span className="tag exempt" title="Not charged this term">Abroad</span>
+                      )}
+                      {r.financialAid && (
+                        <span className="tag aid" title="Not chased for payment">Financial aid</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

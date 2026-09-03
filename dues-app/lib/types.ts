@@ -39,6 +39,12 @@ export interface Term {
   /** First day of the term. Orders terms honestly — creation order is not the
    *  same thing — and gives the bank connection a sensible date to start from. */
   startsOn: string | null;
+  /**
+   * When the row was written. Only a tiebreaker: two terms nobody dated still
+   * have to sort into a definite order, because the whole payment waterfall
+   * depends on knowing which term is older. See `termsOldestFirst`.
+   */
+  createdAt: string;
   isCurrent: boolean;
   duesCents: number | null;   // null until an exec sets the term's dues amount
   // Whether the sync may apply its own certain matches. Per-term because that's
@@ -92,10 +98,22 @@ export interface PaymentRow {
   id: string;
   bankTxnId: string;
   memberId: string;
-  // Which term this money paid. Charges are term-scoped, so payments must be
-  // too — without it, last term's payments settle this term's charges and the
-  // whole chapter reads "paid" the day a new term becomes current.
+  /**
+   * The term that was CURRENT when this money was recorded — an audit fact about
+   * when, not a claim about what it settled. Which term(s) the money actually
+   * pays is derived at read time by lib/ledger.ts, oldest unpaid first, because a
+   * brother who pays his Fall dues in January is paying Fall.
+   *
+   * It used to mean "the term this money paid", and that was the bug: rolling
+   * over to Winter made every January credit settle Winter and left Fall unpaid
+   * forever, with both quarters silently wrong.
+   */
   termId: string;
+  /**
+   * Legacy, and deliberately null on anything written now: a payment can span two
+   * terms' charges (see the spill in lib/ledger.ts), so it cannot point at one
+   * charge row. Kept nullable so history written before the waterfall still reads.
+   */
   chargeId: string | null;
   amountCents: number;
   appliedBy: string;
@@ -131,7 +149,16 @@ export interface Candidate {
   memberName: string;
   score: number;               // 0..1 name-match strength
   viaAlias: boolean;           // matched a confirmed alias, not the roster name
-  outstandingCents: number;    // what this member still owes, for the picker
+  /** Everything this member still owes, across every open term. */
+  outstandingCents: number;
+  /** What the oldest term he still owes on would take to settle — where a
+   *  payment lands first. Equals outstandingCents when only one term is open. */
+  oldestTermCents: number;
+  /** That term's name, for the reason string ("settles his Fall 2026 dues"). */
+  oldestTermLabel: string | null;
+  /** How many terms he still owes something on. 1 means the money has nowhere
+   *  else it could go, which is what makes an unattended apply safe. */
+  openTermCount: number;
 }
 
 // A queue row: the credit plus everything the UI needs to explain the guess.
@@ -152,6 +179,28 @@ export interface QueueItem {
    * whether we know whose money it is.
    */
   nameCertain: boolean;
+  /**
+   * We know WHICH TERM(S) this money settles, beyond argument. The sibling of
+   * `nameCertain`: that one answers "whose money is this", this one answers
+   * "where does it land". Both have to be true before anything moves unattended.
+   *
+   * True in exactly three shapes, and they are the only three where the
+   * oldest-unpaid-first waterfall has no discretion left:
+   *   - he owes on at most one term, so there is nowhere else it could go;
+   *   - the amount squares a whole run of his open terms exactly;
+   *   - the amount covers everything he owes, so every term is settled and the
+   *     remainder is flagged as overpaid.
+   * Anything else leaves a term part-paid — a brother owing Fall $537 and
+   * Spring $300 who sends $300 probably meant Spring, and oldest-first would put
+   * it on Fall. That is a human decision, so it queues.
+   */
+  termCertain: boolean;
+  /**
+   * When `split` is set, the per-brother term charge the amount divides into —
+   * which is not necessarily the current term's, now that Fall and Spring cost
+   * different amounts. Null when nothing looked like a multiple.
+   */
+  splitShareCents: number | null;
   /** No sender name in the descriptor at all. */
   noSender: boolean;
   /**
@@ -164,28 +213,80 @@ export interface QueueItem {
   overpay: boolean;
 }
 
+// One brother's standing in ONE term. The chapter runs three terms a year at
+// different prices and a brother can owe two of them at once, so the per-term
+// slice is a first-class row rather than something the UI reconstructs.
+export interface LedgerTermRow {
+  termId: string;
+  termLabel: string;
+  isCurrent: boolean;
+  /** Abroad that term, so deliberately not charged. */
+  exempt: boolean;
+  chargedCents: number;
+  oppFundCents: number;
+  owedCents: number;       // charged − opp fund
+  /**
+   * How much of his money the waterfall put on THIS term — derived, never
+   * stored. Capped at owedCents: money past the last open term is overpayment,
+   * reported on the member row, not stuffed into a term that didn't earn it.
+   */
+  paidCents: number;
+  balanceCents: number;    // owed − allocated, never negative
+  status: LedgerStatus;
+}
+
 export interface LedgerRow {
   memberId: string;
   name: string;
   aka: string[];
   financialAid: boolean;
-  /** Abroad this term, so deliberately not charged. */
+  /** Abroad in the CURRENT term, so deliberately not charged for it. He may
+   *  still owe an earlier term, which is why this is not the same as owing
+   *  nothing. */
   exempt: boolean;
+  /* Every money figure below is ACROSS ALL TERMS, not just the current one.
+     That is the change the whole feature turns on: a brother who never paid Fall
+     still owes it in Winter, and a ledger that only ever showed the current term
+     hid that. The per-term breakdown is in `terms`, and the current term's slice
+     is `current`, so nothing that was term-scoped became unavailable. */
   chargedCents: number;
   oppFundCents: number;
+  /** Net money actually received from him, all terms, reversals included. A raw
+   *  fact — unlike LedgerTermRow.paidCents it is not capped at what he owed, so
+   *  it can exceed the sum of the per-term figures when he has overpaid. */
   paidCents: number;
   owedCents: number;       // charged − opp fund
   /** Never negative: money past what was owed is reported as overpaid, not as a
    *  negative balance, so "balance" always reads as "what is still owed". */
   balanceCents: number;
-  /** Paid past the balance. A flag, not a credit against next term. */
+  /** Paid past everything owed. A flag, not a credit against a future term —
+   *  though a later term's charge will absorb it, because the waterfall is
+   *  re-derived from the whole pool every read. */
   overpaidCents: number;
   status: LedgerStatus;
+  /** Oldest term first. Only terms he was charged for or exempted from. */
+  terms: LedgerTermRow[];
+  /** The current term's slice, for the numbers that are honestly term-scoped. */
+  current: LedgerTermRow | null;
+  /** The oldest term he still owes on — where the next payment lands. */
+  oldestUnpaidTermId: string | null;
+  /** What that term would take to settle. 0 when he owes nothing. */
+  oldestUnpaidCents: number;
+  /**
+   * Running totals of his open terms, oldest first: [oldest, oldest+next, …].
+   * These are the amounts a brother actually sends, and the only ones that
+   * settle a whole number of terms — the matcher's amount signal.
+   */
+  settlingAmounts: number[];
 }
 
 // The member-facing "what do I owe" row. Comes from the member_balances view,
 // which is the only thing the anon key can read — members must never see the
 // raw bank descriptors.
+//
+// Across ALL terms, exactly like LedgerRow, because the two screens have to
+// agree: a brother reading "$0" here while the desk chases him for last
+// quarter's dues is the bug this page exists to prevent.
 export interface PublicBalance {
   memberId: string;
   name: string;
@@ -195,18 +296,72 @@ export interface PublicBalance {
   status: LedgerStatus;
 }
 
+/**
+ * The desk's headline numbers. Which of these are term-scoped and which span
+ * every term is a deliberate, per-number decision — an exec is already reading
+ * these and none of them may quietly change meaning:
+ *
+ *   - collected / charged / oppFund → THE CURRENT TERM. These answer "how is
+ *     this term going", and they are read against the term's dues amount and as
+ *     a percentage. Summed across years they would climb forever and the
+ *     percentage would stop meaning anything.
+ *   - outstanding / followUpCount / settledCount → EVERY TERM. These answer
+ *     "what is the chapter owed and who do I chase", and scoping them to the
+ *     current term is precisely the bug: a brother who never paid Fall
+ *     disappeared from both the moment the exec rolled over to Winter.
+ *   - aidCount → a member flag, no term at all.
+ *   - exemptCount → the current term, because "abroad" is a fact about one term.
+ *
+ * `outstandingThisTermCents` and `priorOutstandingCents` split the all-terms
+ * figure, so the term number an exec used to read is still on the screen rather
+ * than replaced.
+ */
+/**
+ * What the matcher needs to know about one brother's money.
+ *
+ * "Outstanding" stopped being a single number the day two terms could be open at
+ * once, and collapsing it back to one is exactly what makes a payment land on
+ * the wrong quarter. Lives here rather than in lib/ledger.ts so lib/match.ts can
+ * name it without the two files importing each other.
+ */
+export interface MemberBalance {
+  /** Everything he still owes, across every open term. */
+  totalCents: number;
+  /** What the oldest open term would take — where the next dollar lands. */
+  oldestCents: number;
+  oldestTermLabel: string | null;
+  /** Running totals of his open terms, oldest first: [oldest, oldest+next, …].
+   *  The last entry equals totalCents. These are the only amounts that settle a
+   *  whole number of terms. */
+  settlingAmounts: number[];
+  openTermCount: number;
+}
+
 export interface DeskSummary {
+  /** Current term. Money that arrived against this term's charges. */
   collectedCents: number;
+  /** Current term. */
   chargedCents: number;
+  /** Current term. */
   oppFundCents: number;
+  /** ALL terms — the chapter's real receivable. */
   outstandingCents: number;
+  /** The slice of `outstandingCents` that belongs to the current term. */
+  outstandingThisTermCents: number;
+  /** The slice owed on terms that have already ended. */
+  priorOutstandingCents: number;
+  /** Brothers carrying a balance from a term other than the current one. */
+  priorOwingCount: number;
   memberCount: number;
+  /** All terms: square with the chapter, not just with this quarter. */
   settledCount: number;
   queueCount: number;
   setAsideCount: number;
-  /** Brothers who owe and aren't on financial aid — the actual follow-up list. */
+  /** Brothers who owe on ANY term and aren't on financial aid — the follow-up
+   *  list. Term-scoping this is what let a Fall debt go unchased all winter. */
   followUpCount: number;
   aidCount: number;
+  /** Current term: abroad is a fact about one term. */
   exemptCount: number;
 }
 

@@ -44,7 +44,7 @@ PWA is not wired yet — when it is, mirror `chapter-app`'s `public/sw.js`
 | `lib/bank/store.ts` | Which `SyncStore` a run persists to — Supabase or memory |
 | `app/api/cron/sync/route.ts` | The daily pull. `CRON_SECRET` bearer; never throws |
 | `app/bank/` | Connect, reconnect, auto-apply setting, and the run history |
-| `lib/ledger.ts` | Derives balances, queue, and summary from raw rows — no stored totals |
+| `lib/ledger.ts` | Derives balances, queue, and summary from raw rows — no stored totals. Home of the oldest-unpaid-term-first payment waterfall |
 | `lib/mock-store.ts` | In-memory backend. State hangs off `globalThis`: Next compiles a server bundle per route in dev, so module-level state gives `/settings` its own empty copy |
 | `lib/sample.ts` | The `dues-desk.html` walkthrough rebuilt against the real roster |
 | `lib/roster.ts` | 105 brothers, forked from `../chapter-app/lib/data/mock.ts` |
@@ -52,6 +52,7 @@ PWA is not wired yet — when it is, mirror `chapter-app`'s `public/sw.js`
 | `scripts/check-fuzzy.ts` | Every descriptor shape the matcher must resolve — and the ones it must refuse |
 | `scripts/check-sync.ts` | The feed end to end: the debit filter, promotion, reversal, re-sync, the lock |
 | `scripts/check-aid.ts` | The name resolver, and that the aid flag changes who is chased and nothing about the money |
+| `scripts/check-terms.ts` | Three terms at three prices: oldest-first, the spill, a term he was abroad for, undo, the bank's reversal, and re-runs |
 | `lib/aid.ts` | Pasted names → roster members, reusing `scoreName` from the matcher |
 
 ## Two findings that shape the whole design (Aug 27)
@@ -91,10 +92,49 @@ PWA is not wired yet — when it is, mirror `chapter-app`'s `public/sw.js`
   Nothing is hardcoded: the amount lives on `terms.dues_cents` and an exec types
   it in. `terms.starts_on` orders terms honestly (creation order is not the same
   thing) and gives the bank connection its start date.
+- **A payment settles the oldest unpaid term first** (Aug 31 2026) — and spills
+  forward into later terms when it is large enough. Owing Fall $537 and Winter
+  $537, $1074 comes out square on both and $700 clears Fall and puts $163 on
+  Winter. This replaced a single-term ledger that was quietly wrong twice over: a
+  brother paying his Fall dues in January had the money stamped with the current
+  term, so Fall stayed unpaid forever and Winter read as settled by money that was
+  never meant for it.
+  - **The allocation is derived at read time and never stored** (`lib/ledger.ts`).
+    Which term a payment settles depends on every other payment, charge, grant and
+    exemption that brother has, so a stored allocation is a stored total wearing a
+    different hat — it would go stale the moment anything upstream moved, and
+    `undoPayment` would leave the surviving payments pointing at terms they no
+    longer fill. It is also the only option the schema allows: `payments` is
+    `unique (bank_txn_id, member_id)`, so a credit spanning two terms *cannot* be
+    written as two rows for one brother. **The payment row stays one raw fact —
+    "$700 arrived from him" — and the Fall/Winter split is computed.**
+  - `payments.term_id` now means "the term that was current when this was
+    recorded", an audit fact about *when*, not a claim about what it settled.
+    `charge_id` is null on everything written since, because a payment can span
+    two charges and cannot honestly point at one.
+  - **What is term-scoped and what is not** is a per-number decision, spelled out
+    on `DeskSummary`. Collected / charged / opp fund stay **current term** (they
+    are read as a percentage of this term's charges). Outstanding, the follow-up
+    list and the settled count became **all terms** — scoping those was the bug.
+    The desk shows the split (`$X this term · $Y from earlier terms`) rather than
+    silently redefining a number an exec was already reading.
+  - **Auto-apply gained a second gate**, `termCertain` beside `nameCertain`:
+    knowing whose money it is settles nothing if it then lands on the wrong
+    quarter. It fires only when the waterfall has no discretion — one open term,
+    or an amount that squares a whole run of terms, or one that covers everything
+    he owes. A partial from an unmistakable sender with two terms open used to
+    auto-apply and no longer does: $300 against Fall $537 and Spring $300 plainly
+    meant Spring, and oldest-first would put it on Fall.
+  - `member_balances` was single-term too and now agrees, number for number. It
+    needs no term ordering: the per-term split is order-dependent, the totals are
+    not, so the view uses plain sums and reimplements nothing.
 - **Terms roll over in the app** (Aug 30 2026) — `createTerm` clears the old
   `is_current` before inserting, since `terms_one_current` is a unique partial
-  index. Balances are per term; the bank connection, cursor, learned aliases and
-  aid flags carry over because they belong to the chapter, not to a term.
+  index. Charges are per term; a **balance is not** — see above. The bank
+  connection, cursor, learned aliases and aid flags carry over because they
+  belong to the chapter, not to a term. `terms.starts_on` orders the terms, which
+  is what decides which one a payment settles first, so it is worth typing in;
+  an undated term sorts last.
 
 - **Scope: dues only** (Aug 27) — no points/attendance (that's a separate
   standalone app, see its own spec), no recruitment/socials/announcements.

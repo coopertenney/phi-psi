@@ -2,6 +2,8 @@ import { getServerSupabase } from './supabase/server';
 import type {
   ApplyCreditInput, DuesBackend, FeedApplyResult, FeedPageInput, OppFundInput, RecordCreditInput,
 } from './backend';
+import { buildRosterPlan, type RosterCsvRow } from './roster-csv';
+import type { RosterImportResult } from './backend';
 import type {
   Adjustment, BankStatus, BankTxn, DuesCharge, Exemption, LedgerStatus, MemberRow, NameAlias,
   PaymentRow, PublicBalance, Snapshot, SyncRunRow, Term,
@@ -16,6 +18,7 @@ function activeClient() {
   return isServiceContext() && hasServiceRole ? getServiceSupabase() : getServerSupabase();
 }
 import { aliasToLearn, normalizeName } from './match';
+import { buildLedger } from './ledger';
 import { formatCents } from './money';
 
 // The live backend. Reads the whole term in one round of parallel selects —
@@ -31,6 +34,9 @@ const toMember = (r: any): MemberRow => ({
 });
 const toTerm = (r: any): Term => ({
   id: r.id, label: r.label, startsOn: r.starts_on ?? null, isCurrent: r.is_current,
+  // Only a tiebreaker for terms nobody dated, but the waterfall needs a total
+  // order over terms, so it must never be undefined.
+  createdAt: r.created_at ?? '',
   duesCents: r.dues_cents ?? null, autoApply: r.auto_apply ?? true,
 });
 const toExemption = (r: any): Exemption => ({
@@ -86,19 +92,14 @@ async function currentTerm(): Promise<Term> {
   return toTerm(data);
 }
 
-async function chargeIdFor(memberId: string, termId: string): Promise<string | null> {
-  const sb = activeClient();
-  const { data, error } = await sb.from('dues_charges')
-    .select('id').eq('member_id', memberId).eq('term_id', termId).maybeSingle();
-  fail('read charge', error);
-  return data?.id ?? null;
-}
-
 export const supabaseBackend: DuesBackend = {
   async getSnapshot(): Promise<Snapshot> {
     const sb = activeClient();
     const [members, terms, charges, txns, payments, adjustments, exemptions, aliases, actor] = await Promise.all([
-      sb.from('members').select('id, name, aka, photo_url').order('name'),
+      // financial_aid has to be in the projection or toMember reads undefined and
+      // every brother comes back off the aid list — a drift the mock backend
+      // never had, since it returns the whole row.
+      sb.from('members').select('id, name, aka, photo_url, financial_aid').order('name'),
       sb.from('terms').select('*').order('created_at', { ascending: false }),
       sb.from('dues_charges').select('*'),
       sb.from('bank_txns').select('*').order('posted_on'),
@@ -136,13 +137,20 @@ export const supabaseBackend: DuesBackend = {
     const sb = getServerSupabase();
     const { data, error } = await sb.from('member_balances').select('*').order('name');
     fail('read balances', error);
+    // The status ladder here has to be the same one lib/ledger.ts `statusFor`
+    // walks, in the same order — the desk and this page disagreeing about who is
+    // paid is a bug a reviewer has already caught once. The view is all-terms for
+    // the same reason: a brother reading "$0" while the desk chases him for last
+    // quarter is the failure this page exists to prevent.
     return (data ?? []).map((r: any) => {
       const owedCents = r.owed_cents ?? 0;
       const paidCents = r.paid_cents ?? 0;
       const chargedCents = r.charged_cents ?? 0;
-      const status: LedgerStatus = chargedCents === 0
-        ? 'unbilled'
-        : paidCents >= owedCents ? 'paid' : paidCents > 0 ? 'partial' : 'unpaid';
+      const status: LedgerStatus = chargedCents === 0 && r.exempt_now
+        ? 'exempt'
+        : chargedCents === 0
+          ? 'unbilled'
+          : paidCents >= owedCents ? 'paid' : paidCents > 0 ? 'partial' : 'unpaid';
       return {
         memberId: r.member_id,
         name: r.name,
@@ -202,15 +210,29 @@ export const supabaseBackend: DuesBackend = {
         : 'The split has to add up to the credit exactly.');
     }
 
-    const rows = await Promise.all(input.allocations.map(async (a) => ({
+    // One row per brother, stamped with the term the money was RECORDED in — not
+    // the term it settles. Which term(s) it pays is derived in lib/ledger.ts,
+    // oldest unpaid first, so a Fall payment arriving in January pays Fall.
+    //
+    // Resolving that here instead was the alternative, and it does not fit: a
+    // credit large enough to cover two terms would need two payment rows for one
+    // brother, and `unique (bank_txn_id, member_id)` forbids exactly that — for
+    // good reason, since it is the constraint that stops one credit being applied
+    // to the same brother twice. Deriving keeps one raw row per brother per
+    // credit, and lets `undoPayment` and the `removed` reversal below stay
+    // correct by simply changing what is in the pool.
+    //
+    // charge_id is left null for the same reason: a payment can span two terms'
+    // charges, so it cannot honestly point at one.
+    const rows = input.allocations.map((a) => ({
       bank_txn_id: txn.id,
       member_id: a.memberId,
       term_id: term.id,
-      charge_id: await chargeIdFor(a.memberId, term.id),
+      charge_id: null,
       amount_cents: a.amountCents,
       applied_by: actor,
       reason: input.reason,
-    })));
+    }));
     // unique (bank_txn_id, member_id) makes this insert the idempotency point:
     // a double-submit hits the constraint instead of double-crediting.
     const { error } = await sb.from('payments').insert(rows);
@@ -256,7 +278,11 @@ export const supabaseBackend: DuesBackend = {
       bank_txn_id: txn.id,
       member_id: memberId,
       term_id: term.id,
-      charge_id: await chargeIdFor(memberId, term.id),
+      charge_id: null,
+      // Negative: un-credits without deleting history. Which term loses the money
+      // is derived — the waterfall drains the most recently filled term first, so
+      // taking $537 back off a brother who owed Fall and Winter leaves him owing
+      // exactly one term again, whichever one the money had filled.
       amount_cents: txn.amountCents,
       applied_by: await actorEmail(),
       reason: `Reversal of a returned credit (${txn.rawDescription}).`,
@@ -347,6 +373,48 @@ export const supabaseBackend: DuesBackend = {
       (await sb.from('members').update({ financial_aid: enabled }).in('id', memberIds)).error);
   },
 
+  async importRoster(rows: RosterCsvRow[], mode: 'replace' | 'pledges'): Promise<RosterImportResult> {
+    const sb = activeClient();
+    const { data: current, error: readError } = await sb.from('members')
+      .select('id, name, aka, photo_url, financial_aid');
+    fail('read the roster', readError);
+
+    // Recomputed here, from this backend's own roster — never trusted from the
+    // caller, whose copy may be stale or hand-edited.
+    const plan = buildRosterPlan(rows, (current ?? []).map(toMember), mode);
+
+    // Everyone on the file who is already here keeps his id, and therefore his
+    // payments, his charges and every sender name an exec confirmed for him.
+    for (const change of plan.aidChanges) {
+      fail('update financial aid', (await sb.from('members')
+        .update({ financial_aid: change.financialAid }).eq('id', change.member.id)).error);
+    }
+
+    if (plan.added.length) {
+      const { error } = await sb.from('members').insert(plan.added.map((r) => ({
+        name: r.name, financial_aid: r.financialAid,
+      })));
+      fail('add the new brothers', error);
+    }
+
+    if (plan.removed.length) {
+      // members cascades to payments, dues_charges, adjustments, exemptions and
+      // name_aliases. That is what a replace costs, and it is the reason the
+      // caller shows a summary first.
+      const { error } = await sb.from('members')
+        .delete().in('id', plan.removed.map((m) => m.id));
+      fail('remove the brothers who left', error);
+    }
+
+    return {
+      keptCount: plan.kept.length,
+      addedCount: plan.added.length,
+      removedCount: plan.removed.length,
+      aidChangedCount: plan.aidChanges.length,
+      removedNames: plan.removed.map((m) => m.name),
+    };
+  },
+
   async setExempt(memberId: string, reason: string) {
     const sb = activeClient();
     const term = await currentTerm();
@@ -354,14 +422,21 @@ export const supabaseBackend: DuesBackend = {
     // An exemption is the absence of a charge, not a waived one — so a charge
     // already issued comes off. Unless money has landed against it, in which
     // case a human has to decide what happens to the money.
+    //
+    // "Money has landed" is a DERIVED question now, and it runs through the same
+    // buildLedger the mock backend uses so the two cannot drift. It used to be
+    // `payments.charge_id = charge.id`, which misses everything that matters once
+    // a payment can span terms: a credit recorded in Fall that spilled into
+    // Winter carries Fall's term id and no charge id at all, and deleting
+    // Winter's charge under it would silently re-route his money to a later term.
     const { data: charge, error: chargeError } = await sb.from('dues_charges')
       .select('id').eq('member_id', memberId).eq('term_id', term.id).maybeSingle();
     fail('read charge', chargeError);
     if (charge) {
-      const { data: paid, error: paidError } = await sb.from('payments')
-        .select('id').eq('charge_id', charge.id).limit(1);
-      fail('read payments', paidError);
-      if (paid?.length) {
+      const row = buildLedger(await supabaseBackend.getSnapshot())
+        .find((r) => r.memberId === memberId);
+      const landed = row?.terms.find((t) => t.termId === term.id)?.paidCents ?? 0;
+      if (landed > 0) {
         throw new Error(
           'A payment is already applied to this term for him. Undo it first, then mark him abroad.',
         );

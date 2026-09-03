@@ -8,7 +8,7 @@
 
 import { buildIndex, rankCredit } from '../lib/match';
 import { ROSTER } from '../lib/roster';
-import type { BankTxn, MemberRow, NameAlias } from '../lib/types';
+import type { BankTxn, MemberBalance, MemberRow, NameAlias } from '../lib/types';
 
 const members: MemberRow[] = ROSTER.map((r, i) => ({
   id: `m${i + 1}`, name: r.name, aka: [], photoUrl: null, financialAid: false,
@@ -20,6 +20,19 @@ const byName = (name: string) => {
 };
 
 const DUES = 45000;
+
+// `rankCredit` used to take one "outstanding" number per brother; it now takes
+// his term-by-term standing, because one number stopped being true the day two
+// terms could be open at once. Every case below is single-term, so the shape
+// change is mechanical and the assertions are untouched — one open term owing
+// `owed`, whose only settling amount is `owed` itself.
+const oneOpenTerm = (owed: number): MemberBalance => ({
+  totalCents: owed,
+  oldestCents: owed,
+  oldestTermLabel: 'Fall 2026',
+  settlingAmounts: owed > 0 ? [owed] : [],
+  openTermCount: owed > 0 ? 1 : 0,
+});
 
 interface Case {
   what: string;
@@ -110,9 +123,9 @@ CASES.forEach((c, i) => {
   // Everyone owes exactly the term charge, which is the real situation: with 105
   // brothers billed the same amount, the amount barely disambiguates and the
   // name is doing nearly all the work.
-  const outstanding = Object.fromEntries(members.map((m) => [m.id, DUES]));
+  const balances = Object.fromEntries(members.map((m) => [m.id, oneOpenTerm(DUES)]));
   const item = rankCredit({
-    txn, members, aliases, outstandingByMember: outstanding, duesCents: DUES,
+    txn, members, aliases, balances, duesCents: DUES,
     index: buildIndex(members, aliases),
   });
 
@@ -154,9 +167,9 @@ if (shared) {
     pending: false, removedAt: null, amountChangedAt: null,
     source: 'plaid', status: 'queued', enteredBy: 'test',
   };
-  const outstanding = Object.fromEntries(members.map((m) => [m.id, DUES]));
+  const balances = Object.fromEntries(members.map((m) => [m.id, oneOpenTerm(DUES)]));
   const item = rankCredit({
-    txn, members, aliases: [], outstandingByMember: outstanding, duesCents: DUES,
+    txn, members, aliases: [], balances, duesCents: DUES,
   });
   const ok = item.tied && item.tier === 'unclear';
   if (!ok) failures++;
@@ -165,9 +178,9 @@ if (shared) {
 
   // Same descriptor, but only one of them still owes this amount: that's a real
   // signal, and using it removes a queue item a human would resolve identically.
-  const oneFits = { ...outstanding, [group[1].id]: 20000 };
+  const oneFits = { ...balances, [group[1].id]: oneOpenTerm(20000) };
   const broken = rankCredit({
-    txn, members, aliases: [], outstandingByMember: oneFits, duesCents: DUES,
+    txn, members, aliases: [], balances: oneFits, duesCents: DUES,
   });
   const brokenOk = !broken.tied && broken.candidates[0]?.memberId === group[0].id;
   if (!brokenOk) failures++;

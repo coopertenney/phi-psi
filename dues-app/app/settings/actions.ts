@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 import { resolveNames } from '@/lib/aid';
+import { readRosterCsv } from '@/lib/roster-csv';
 import { parseAmountToCents } from '@/lib/money';
 
 async function run(fn: () => Promise<string>) {
@@ -126,4 +127,25 @@ export async function clearAidAction(formData: FormData) {
 export async function previewAidNames(text: string) {
   const snap = await db.getSnapshot();
   return resolveNames(text, snap.members);
+}
+
+export async function importRosterAction(formData: FormData) {
+  const csv = String(formData.get('csv') ?? '');
+  const mode = str(formData, 'mode') === 'replace' ? 'replace' : 'pledges';
+  await run(async () => {
+    if (!csv.trim()) throw new Error('Pick a file first.');
+    // Re-read from the raw text rather than trusting anything the browser
+    // computed; the backend then recomputes the plan against its own roster.
+    const { rows } = readRosterCsv(csv);
+    const result = await db.importRoster(rows, mode);
+
+    const parts: string[] = [];
+    if (result.addedCount) parts.push(`${result.addedCount} added`);
+    if (result.keptCount) parts.push(`${result.keptCount} kept`);
+    if (result.removedCount) parts.push(`${result.removedCount} removed`);
+    if (result.aidChangedCount) parts.push(`${result.aidChangedCount} aid change${result.aidChangedCount === 1 ? '' : 's'}`);
+    return parts.length
+      ? `Roster updated: ${parts.join(', ')}.`
+      : 'Nothing changed — the file matches the roster already.';
+  });
 }

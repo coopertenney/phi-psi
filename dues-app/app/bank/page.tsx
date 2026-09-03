@@ -27,7 +27,10 @@ export default async function BankPage({
   // Only fetched when there is a choice to make — it costs a bank call.
   const accounts = status.connected && !status.accountSelected ? await selectableAccounts() : [];
   const term = snap.term;
-  const charged = buildLedger(snap).filter((r) => r.chargedCents > 0).length;
+  // The CURRENT term's charges. buildLedger's row-level chargedCents spans every
+  // term now, and "somebody was charged in Fall 2026" says nothing about whether
+  // this term is ready to start matching against.
+  const charged = buildLedger(snap).filter((r) => (r.current?.chargedCents ?? 0) > 0).length;
   // Syncing before charges exist gives the matcher no balances to compare
   // against, so nothing reaches a confident tier and every reason string is
   // wrong. Nothing is unsafe about it — it is just useless, and it makes the

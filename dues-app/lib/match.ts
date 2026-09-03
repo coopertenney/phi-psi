@@ -5,8 +5,15 @@
 // shows verbatim: an exec must be able to answer "why does the app think Bobby
 // paid?" without reading code.
 
-import type { BankTxn, Candidate, MatchTier, MemberRow, NameAlias, QueueItem } from './types';
+import type {
+  BankTxn, Candidate, MatchTier, MemberBalance, MemberRow, NameAlias, QueueItem,
+} from './types';
 import { formatCents } from './money';
+
+// A brother nobody has charged yet: owes nothing, on no term.
+const NO_BALANCE: MemberBalance = {
+  totalCents: 0, oldestCents: 0, oldestTermLabel: null, settlingAmounts: [], openTermCount: 0,
+};
 
 /* ─────────────────────────── name normalization ─────────────────────────── */
 
@@ -533,10 +540,30 @@ export interface MatchInput {
   txn: BankTxn;
   members: MemberRow[];
   aliases: NameAlias[];
-  /** memberId → what they still owe this term, in cents. */
-  outstandingByMember: Record<string, number>;
-  /** The term's dues charge, if an exec has set one. */
+  /**
+   * memberId → what he owes, term by term (lib/ledger.ts `balancesByMember`).
+   *
+   * This used to be one number per brother, and one number stopped being true
+   * the day two terms could be open at once. "Outstanding" is now ambiguous on
+   * purpose: `totalCents` is what would square him with the chapter, and
+   * `settlingAmounts` are the running totals of his open terms oldest-first —
+   * the only amounts that settle a whole number of terms, and the ones a brother
+   * paying up actually sends. The amount signal reads `settlingAmounts`, so a
+   * payment matching ANY of his open terms (not just the total) still reads as
+   * confident, while an amount that would leave a term part-paid does not.
+   */
+  balances: Record<string, MemberBalance>;
+  /** The CURRENT term's dues charge, if an exec has set one — used for the
+   *  "this is the full term charge" note the exec reads. */
   duesCents: number | null;
+  /**
+   * Every distinct per-brother term charge on the books, for split detection.
+   * Fall is $537 and Spring is $300, so "exactly 2× the dues, probably two
+   * brothers" has to be checked against all of them: a doubled Fall payment
+   * arriving during Spring is invisible if only the current term is considered.
+   * Defaults to the current term's charge alone.
+   */
+  duesOptions?: number[];
   /** Prebuilt roster index; built on the fly when a caller doesn't have one. */
   index?: RosterIndex;
 }
@@ -555,7 +582,8 @@ function splitSenders(sender: string): string[] {
 }
 
 export function rankCredit(input: MatchInput): QueueItem {
-  const { txn, members, aliases, outstandingByMember, duesCents } = input;
+  const { txn, members, aliases, balances, duesCents } = input;
+  const balanceOf = (memberId: string) => balances[memberId] ?? NO_BALANCE;
   const index = input.index ?? buildIndex(members, aliases);
   const parsed = parseDescriptor(txn.rawDescription);
   const amount = txn.amountCents;
@@ -613,13 +641,19 @@ export function rankCredit(input: MatchInput): QueueItem {
   scored.sort((a, b) => b.evidence.score - a.evidence.score);
   const keep = scored.filter((s) => s.evidence.score >= CONSIDER).slice(0, 4);
 
-  const candidates: Candidate[] = keep.map((s) => ({
-    memberId: s.member.id,
-    memberName: s.member.name,
-    score: s.evidence.score,
-    viaAlias: s.viaAlias,
-    outstandingCents: outstandingByMember[s.member.id] ?? 0,
-  }));
+  const candidates: Candidate[] = keep.map((s) => {
+    const bal = balanceOf(s.member.id);
+    return {
+      memberId: s.member.id,
+      memberName: s.member.name,
+      score: s.evidence.score,
+      viaAlias: s.viaAlias,
+      outstandingCents: bal.totalCents,
+      oldestTermCents: bal.oldestCents,
+      oldestTermLabel: bal.oldestTermLabel,
+      openTermCount: bal.openTermCount,
+    };
+  });
 
   let top = keep[0];
   const abs = Math.abs(amount);
@@ -631,8 +665,14 @@ export function rankCredit(input: MatchInput): QueueItem {
   // but only one of them owes exactly this much, that's a real signal and using
   // it removes a queue item a human would resolve the same way. If both fit the
   // amount, it stays tied — the app refuses to guess.
+  //
+  // "Owes exactly this much" now means "squares a whole run of his open terms",
+  // not "equals one number": with Fall and Winter both open, $1074 is exactly
+  // what he owes just as much as $537 is exactly what his oldest term takes.
   if (tied) {
-    const fits = closeToTop.filter((k) => (outstandingByMember[k.member.id] ?? 0) === abs && abs > 0);
+    const fits = closeToTop.filter(
+      (k) => abs > 0 && balanceOf(k.member.id).settlingAmounts.includes(abs),
+    );
     if (fits.length === 1) {
       top = fits[0];
       tied = false;
@@ -651,12 +691,48 @@ export function rankCredit(input: MatchInput): QueueItem {
   const sendersSenior = /\bSR\b|\bSENIOR\b/.test(normalizeName(parsed.senderName));
 
   /* ---- what the amount says ---- */
-  const outstanding = top ? (outstandingByMember[top.member.id] ?? 0) : 0;
-  const exactBalance = Boolean(top) && abs === outstanding && outstanding > 0;
+  const bal = top ? balanceOf(top.member.id) : NO_BALANCE;
+  const outstanding = bal.totalCents;
+  // Squares a whole run of his open terms, oldest first. This is the multi-term
+  // replacement for "amount === outstanding": a brother owing Fall $537 and
+  // Winter $537 who sends $537 has paid exactly one term, and one who sends
+  // $1074 has paid exactly two. Both are unambiguous; neither equals a single
+  // "outstanding" number.
+  const settlesWholeTerms = abs > 0 && bal.settlingAmounts.includes(abs);
+  const exactBalance = Boolean(top) && settlesWholeTerms;
   const exactDues = duesCents !== null && abs === duesCents;
-  const isMultiple = duesCents !== null && duesCents > 0 && abs % duesCents === 0 && abs / duesCents >= 2;
+
+  // Split detection, checked against every term charge on the books rather than
+  // only the current term's, because Fall costs $537 and Spring costs $300 — a
+  // doubled Fall payment arriving in Spring is invisible to a current-term-only
+  // test. `splitShare` is the charge it divided by, so the UI offers the right
+  // halves instead of assuming the current term's price.
+  const options = (input.duesOptions ?? (duesCents !== null ? [duesCents] : []))
+    .filter((d) => d > 0);
+  const splitShare = options.find((d) => abs % d === 0 && abs / d >= 2) ?? null;
+  const isMultiple = splitShare !== null;
+
   const partial = Boolean(top) && !isReturn && outstanding > 0 && abs < outstanding;
   const overpay = Boolean(top) && !isReturn && outstanding > 0 && abs > outstanding && !isMultiple;
+
+  // Do we know WHICH TERM this money settles? The waterfall in lib/ledger.ts is
+  // oldest-unpaid-first and has no discretion in exactly three cases, and those
+  // three are the only ones where nothing can be credited to the wrong quarter:
+  //
+  //   - he owes on one term or none, so there is nowhere else it could land;
+  //   - it squares a whole run of terms exactly (settlesWholeTerms);
+  //   - it covers everything he owes, so every open term is settled and the
+  //     remainder is reported as overpayment rather than credited anywhere.
+  //
+  // Everything else leaves some term part-paid, and part-paid is where the wrong
+  // quarter gets money: a brother owing Fall $537 and Spring $300 who sends $300
+  // almost certainly meant Spring, while oldest-first would put it on Fall. That
+  // is a judgment, so it queues. Deliberately independent of `nameCertain`: that
+  // answers "whose money is this", this answers "where does it go", and
+  // lib/autoapply.ts needs both before it moves anything.
+  const termCertain = Boolean(top) && !isReturn && abs > 0 && (
+    bal.openTermCount <= 1 || settlesWholeTerms || abs >= outstanding
+  );
 
   // Is the NAME beyond doubt? Separate from the tier on purpose: a partial
   // payment from an unmistakable sender is certain about who and unusual about
@@ -670,12 +746,22 @@ export function rankCredit(input: MatchInput): QueueItem {
     && top.evidence.score >= 0.95
     && top.evidence.score - runnerUp > TIE_GAP * 2;
 
+  // How many of his open terms this amount squares, for the note below.
+  const termsCovered = settlesWholeTerms ? bal.settlingAmounts.indexOf(abs) + 1 : 0;
+  const oldestLabel = bal.oldestTermLabel ?? 'his oldest unpaid term';
+
   let amountNote: string;
   if (isReturn) amountNote = `${formatCents(abs)} came back`;
-  else if (isMultiple && duesCents) amountNote = `${formatCents(abs)} is exactly ${abs / duesCents}× the ${formatCents(duesCents)} term charge — likely covering more than one brother`;
+  else if (isMultiple && splitShare) amountNote = `${formatCents(abs)} is exactly ${abs / splitShare}× the ${formatCents(splitShare)} term charge — likely covering more than one brother`;
   else if (brokenByAmount) amountNote = `${formatCents(abs)} is exactly what ${top.member.name} still owes and not what the others owe, which settles it`;
+  else if (termsCovered > 1) amountNote = `${formatCents(abs)} is exactly what he owes for ${termsCovered} terms, starting with ${oldestLabel}`;
+  else if (exactBalance && bal.openTermCount > 1) amountNote = `${formatCents(abs)} is exactly what he owes for ${oldestLabel}, his oldest unpaid term — the rest of his balance stays open`;
   else if (exactBalance) amountNote = `${formatCents(abs)} is exactly what they still owe`;
   else if (exactDues) amountNote = `${formatCents(abs)} is the full term charge`;
+  // The oldest-first rule is stated out loud whenever the money will not land
+  // cleanly: an exec reading "apply it as a partial" deserves to know which
+  // quarter it partly pays.
+  else if (partial && bal.openTermCount > 1) amountNote = `${formatCents(abs)} is short of the ${formatCents(outstanding)} he owes across ${bal.openTermCount} terms — it would go against ${oldestLabel} first`;
   else if (partial) amountNote = `${formatCents(abs)} is short of the ${formatCents(outstanding)} still owed — apply it as a partial payment`;
   else if (overpay) amountNote = `${formatCents(abs)} is more than the ${formatCents(outstanding)} still owed`;
   else if (!top) amountNote = `${formatCents(abs)} matches no outstanding charge`;
@@ -699,7 +785,12 @@ export function rankCredit(input: MatchInput): QueueItem {
   // never good enough to move money unattended — both CLAUDE.md and the UI
   // promise a tie always waits for a human.
   else if (brokenByAmount) tier = 'check';
-  else if (top.evidence.score >= 0.95 && (exactBalance || exactDues) && !isMultiple) tier = 'clear';
+  // `termCertain` joined this condition when terms started overlapping. Without
+  // it, `exactDues` alone could reach 'clear' for a brother whose oldest term is
+  // part-paid — the amount equals the term charge, but pouring it oldest-first
+  // settles a stub of Fall and drops the rest on Winter. Confident about the
+  // name and the number, wrong about the quarter.
+  else if (top.evidence.score >= 0.95 && (exactBalance || exactDues) && !isMultiple && termCertain) tier = 'clear';
   else if (top.evidence.score >= 0.66) tier = 'check';
   else tier = 'unclear';
 
@@ -728,7 +819,7 @@ export function rankCredit(input: MatchInput): QueueItem {
 
   return {
     txn, tier, candidates, reason, partial, split: isMultiple, tied,
-    nameCertain, overpay,
+    nameCertain, termCertain, splitShareCents: splitShare, overpay,
     noSender: !parsed.senderName,
     notAPerson: !parsed.recognized,
   };

@@ -127,10 +127,20 @@ create table if not exists payments (
   id           uuid primary key default gen_random_uuid(),
   bank_txn_id  uuid not null references bank_txns(id) on delete cascade,
   member_id    uuid not null references members(id) on delete cascade,
-  -- Which term this money paid. Charges are term-scoped, so payments must be
-  -- too, or last term's payments settle this term's charges and the whole
-  -- chapter reads "paid" the day a new term becomes current.
+  -- The term that was CURRENT when this money was recorded — an audit fact about
+  -- when, not a claim about what it settled. Which term(s) it actually pays is
+  -- derived at read time, oldest unpaid first (lib/ledger.ts and the
+  -- member_balances view below), because a brother paying his Fall dues in
+  -- January is paying Fall.
+  --
+  -- It used to mean "the term this money paid", and that was the bug: rolling
+  -- over to Winter made every January credit settle Winter, left Fall unpaid
+  -- forever, and made both quarters wrong without anything looking wrong.
   term_id      uuid not null references terms(id) on delete cascade,
+  -- Legacy, and null on everything written now. A payment can span two terms'
+  -- charges — $1074 settles Fall and Winter — so it cannot honestly point at one
+  -- charge row, and `unique (bank_txn_id, member_id)` forbids splitting it into
+  -- two rows. Kept nullable so rows written before the waterfall still read.
   charge_id    uuid references dues_charges(id) on delete set null,
   -- Negative when reversing a returned credit: history is appended, never deleted.
   amount_cents integer not null check (amount_cents <> 0),
@@ -144,6 +154,10 @@ create table if not exists payments (
   -- never be applied to the same member twice.
   unique (bank_txn_id, member_id)
 );
+
+-- The waterfall reads every payment a brother has ever made, across all terms,
+-- to work out which term the next dollar settles.
+create index if not exists payments_member_idx on payments (member_id, created_at);
 
 create table if not exists name_aliases (
   id          uuid primary key default gen_random_uuid(),
@@ -185,7 +199,6 @@ create table if not exists sync_state (
 -- zero rows — which reads as "someone else holds the lock". Without this seed
 -- the very first sync reports "already running" forever.
 insert into sync_state (id) values (1) on conflict (id) do nothing;
-insert into bank_connection (id) values (1) on conflict (id) do nothing;
 
 -- What an exec may see about the connection. Written by the service role,
 -- readable by execs — deliberately NOT part of the exec_all loop below, because
@@ -201,6 +214,10 @@ create table if not exists bank_connection (
   needs_reauth     boolean not null default false,
   last_error       text
 );
+
+-- Seeded after the table exists. This insert used to sit above the create, so
+-- applying schema.sql cold failed on "relation bank_connection does not exist".
+insert into bank_connection (id) values (1) on conflict (id) do nothing;
 
 -- One row per sync. A reversal that happens at 7am with nobody watching is not
 -- an audit trail unless it is written down.
@@ -233,31 +250,72 @@ create index if not exists sync_runs_started_idx on sync_runs (started_at desc);
 -- see bank_txns (raw descriptors carry senders' and parents' names), so the
 -- anon key reaches this view and nothing else. Views run with the owner's
 -- rights, so anon reading it never touches the base tables' RLS.
-create or replace view member_balances as
+--
+-- ACROSS EVERY TERM, not just the current one. This used to be
+-- `cross join lateral (select ... from terms where is_current limit 1)`, which
+-- was the same single-term bug as lib/ledger.ts had: the day an exec rolled over
+-- to Winter, a brother who never paid Fall read "$0 — Paid" on this page while
+-- the desk chased him for $537. The two screens must agree, and now they do,
+-- number for number.
+--
+-- Note what this view does NOT need: any term ordering. A payment settles the
+-- oldest unpaid term first and spills forward, and the per-term split of that
+-- waterfall is genuinely order-dependent — but the TOTALS are not. However the
+-- money is poured across the terms, the amount that lands somewhere is
+-- min(net paid, total owed) and the rest is overpayment. So the per-term
+-- breakdown stays in lib/ledger.ts, where the desk needs it, and the member page
+-- gets the same totals from plain sums. Nothing here can drift out of step with
+-- the waterfall, because nothing here reimplements it.
+--
+-- Dropped rather than replaced: `create or replace view` cannot remove a column,
+-- and term_label is gone because the numbers are no longer scoped to one term.
+drop view if exists member_balances;
+create view member_balances as
 select
-  m.id                                            as member_id,
-  m.name                                          as name,
-  coalesce(c.amount_cents, 0)                     as charged_cents,
-  coalesce(adj.total, 0)                          as opp_fund_cents,
-  -- greatest(...) mirrors Math.min(oppFund, charged) in lib/ledger.ts. Without
-  -- it an over-granted adjustment makes owed_cents negative, and 0 >= -100 reads
-  -- as "paid" on the member-facing page for someone who has paid nothing —
-  -- while the exec ledger correctly shows them owing. The two screens must agree.
-  greatest(coalesce(c.amount_cents, 0) - coalesce(adj.total, 0), 0)            as owed_cents,
-  coalesce(pay.total, 0)                                                      as paid_cents,
-  greatest(coalesce(c.amount_cents, 0) - coalesce(adj.total, 0), 0) - coalesce(pay.total, 0) as balance_cents,
-  t.label                                         as term_label
+  m.id                     as member_id,
+  m.name                   as name,
+  coalesce(ch.charged, 0)  as charged_cents,
+  coalesce(ch.opp_fund, 0) as opp_fund_cents,
+  coalesce(ch.owed, 0)     as owed_cents,
+  -- Net money received from him, reversals included. A raw fact, deliberately
+  -- NOT capped at what he owed — it is the "Paid" column, and capping it would
+  -- hide an overpayment. lib/ledger.ts LedgerRow.paidCents is the same number.
+  coalesce(pay.total, 0)   as paid_cents,
+  -- greatest(pay.total, 0) mirrors the waterfall: a net-negative pool (only
+  -- reachable if a reversal were somehow recorded twice) allocates nothing
+  -- rather than inflating what he owes past what he was charged.
+  greatest(coalesce(ch.owed, 0) - greatest(coalesce(pay.total, 0), 0), 0) as balance_cents,
+  greatest(greatest(coalesce(pay.total, 0), 0) - coalesce(ch.owed, 0), 0) as overpaid_cents,
+  -- Abroad in the CURRENT term. Only used to tell 'exempt' apart from
+  -- 'unbilled', exactly as lib/ledger.ts statusFor does — a brother who is
+  -- abroad and sent nothing must never read as 'paid'.
+  coalesce(ex.abroad, false) as exempt_now
 from members m
-cross join lateral (select id, label from terms where is_current limit 1) t
-left join dues_charges c on c.member_id = m.id and c.term_id = t.id
 left join lateral (
-  select sum(a.amount_cents) as total from adjustments a
-  where a.member_id = m.id and a.term_id = t.id
-) adj on true
+  select
+    sum(c.amount_cents)                                          as charged,
+    -- least(...) mirrors Math.min(oppFund, charged) in lib/ledger.ts, PER TERM.
+    -- Without the per-term cap an over-granted adjustment in one term would
+    -- quietly reduce what a different term owes.
+    sum(least(coalesce(a.total, 0), c.amount_cents))             as opp_fund,
+    sum(greatest(c.amount_cents - coalesce(a.total, 0), 0))      as owed
+  from dues_charges c
+  left join lateral (
+    select sum(x.amount_cents) as total from adjustments x
+    where x.member_id = c.member_id and x.term_id = c.term_id
+  ) a on true
+  where c.member_id = m.id
+) ch on true
 left join lateral (
   select sum(p.amount_cents) as total from payments p
-  where p.member_id = m.id and p.term_id = t.id
-) pay on true;
+  where p.member_id = m.id
+) pay on true
+left join lateral (
+  select true as abroad from exemptions e
+  join terms t on t.id = e.term_id and t.is_current
+  where e.member_id = m.id
+  limit 1
+) ex on true;
 
 /* ─────────────────────────── RLS ─────────────────────────── */
 

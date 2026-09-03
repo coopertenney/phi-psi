@@ -1,4 +1,5 @@
 import { Nav } from '@/components/Nav';
+import { RosterImport } from '@/components/RosterImport';
 import { db, isMockBackend } from '@/lib/db';
 import { buildLedger } from '@/lib/ledger';
 import { formatCents } from '@/lib/money';
@@ -20,6 +21,9 @@ export default async function SettingsPage({
     snap.charges.filter((c) => !term || c.termId === term.id).map((c) => c.memberId),
   ).size;
   const memberName = (id: string) => snap.members.find((m) => m.id === id)?.name ?? 'unknown';
+  // Grants belong to a term — an opportunity fund grant against Fall does not
+  // reduce what a brother owes for Spring — so the list has to say which.
+  const termLabel = (id: string) => snap.terms.find((t) => t.id === id)?.label ?? 'unknown term';
   const applied = [...snap.payments].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).slice(0, 25);
   const txnById = new Map(snap.txns.map((t) => [t.id, t]));
   const onAid = rows.filter((r) => r.financialAid);
@@ -79,6 +83,32 @@ export default async function SettingsPage({
 
       <section className="sec">
         <div className="sec-head">
+          <h2>The roster</h2>
+          <span className="hint">{snap.members.length} brothers</span>
+        </div>
+        <div className="panel">
+          <h3>Add a pledge class</h3>
+          <p className="note">
+            Additive. Everyone already on the roster is left exactly as they are, and nobody
+            is ever removed by this — so a wrong file here costs you a few names to delete,
+            nothing more.
+          </p>
+          <RosterImport mode="pledges" members={snap.members} />
+        </div>
+        <div className="panel">
+          <h3>Replace the whole roster</h3>
+          <p className="note">
+            For the start of a year. The file becomes the roster: brothers on it keep their
+            payment history and every learned sender name, brothers missing from it are
+            deleted along with their records. You will see exactly who would go before
+            anything happens.
+          </p>
+          <RosterImport mode="replace" members={snap.members} />
+        </div>
+      </section>
+
+      <section className="sec">
+        <div className="sec-head">
           <h2>Start a new term</h2>
           <span className="hint">quarterly, or however often dues are collected</span>
         </div>
@@ -99,12 +129,15 @@ export default async function SettingsPage({
             <button className="btn-primary" type="submit">Start the term</button>
           </form>
           <p className="note">
-            The new term becomes the current one and everything starts from zero: balances are
-            counted per term, so last term&rsquo;s payments never settle this term&rsquo;s charges.
+            The new term becomes the current one and gets its own charges at its own price.
             Nothing is deleted &mdash; {term ? `${term.label}'s` : 'the old term\u2019s'} ledger
-            stays exactly as it is. The bank connection, the learned name matches and the financial
-            aid list all carry over; they belong to the chapter, not to a term.
-            The start date is used once, to tell the bank connection how far back to read.
+            stays exactly as it is, <strong>including what anyone still owes on it</strong>: a
+            brother who never paid last term keeps owing it, and the next payment he sends settles
+            that oldest unpaid term first before any of it reaches this one. The bank connection,
+            the learned name matches and the financial aid list all carry over; they belong to the
+            chapter, not to a term.
+            The start date is used once, to tell the bank connection how far back to read &mdash;
+            and to order the terms, which is what decides which one a payment settles first.
           </p>
         </div>
       </section>
@@ -333,12 +366,15 @@ export default async function SettingsPage({
           <div className="tablewrap">
             <table>
               <thead>
-                <tr><th>Brother</th><th className="num">Covered</th><th>Note</th><th /></tr>
+                <tr>
+                  <th>Brother</th><th>Term</th><th className="num">Covered</th><th>Note</th><th />
+                </tr>
               </thead>
               <tbody>
                 {snap.adjustments.map((a) => (
                   <tr key={a.id}>
                     <td className="who">{memberName(a.memberId)}</td>
+                    <td>{termLabel(a.termId)}</td>
                     <td className="num">{formatCents(a.amountCents)}</td>
                     <td>{a.reason || '—'}</td>
                     <td>

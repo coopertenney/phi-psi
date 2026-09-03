@@ -5,6 +5,7 @@ import { formatCents } from '@/lib/money';
 
 const STATUS_LABEL: Record<string, string> = {
   paid: 'Paid', partial: 'Partial', unpaid: 'Unpaid', unbilled: 'Not charged',
+  exempt: 'Abroad',
 };
 
 export default async function BalancesPage() {
@@ -17,9 +18,11 @@ export default async function BalancesPage() {
         <div className="eyebrow">Phi Kappa Psi · Cal Beta</div>
         <h1>What do I owe?</h1>
         <p>
-          Dues charged this term against what&rsquo;s been received. Payments show up here once an
-          exec has matched them to you — a Zelle credit carries only a name and an amount, so
-          matching is a human decision, not an instant one.
+          Every term you&rsquo;ve been charged for against everything that&rsquo;s been received —
+          not just this quarter, so dues you never paid last quarter are still here. A payment
+          settles your oldest unpaid term first and spills into the next one if it&rsquo;s big
+          enough. Payments show up once an exec has matched them to you: a Zelle credit carries
+          only a name and an amount, so matching is a human decision, not an instant one.
         </p>
       </header>
 
